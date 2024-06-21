@@ -4,6 +4,7 @@ https://github.com/mattragoza/liGAN/blob/master/fitting.py
 License: GNU General Public License v2.0
 https://github.com/mattragoza/liGAN/blob/master/LICENSE
 """
+
 import itertools
 
 import numpy as np
@@ -19,7 +20,7 @@ class MolReconsError(Exception):
 
 
 def reachable_r(a, b, seenbonds):
-    '''Recursive helper.'''
+    """Recursive helper."""
 
     for nbr in ob.OBAtomAtomIter(a):
         bond = a.GetBond(nbr).GetIdx()
@@ -33,7 +34,7 @@ def reachable_r(a, b, seenbonds):
 
 
 def reachable(a, b):
-    '''Return true if atom b is reachable from a without using the bond between them.'''
+    """Return true if atom b is reachable from a without using the bond between them."""
     if a.GetExplicitDegree() == 1 or b.GetExplicitDegree() == 1:
         return False  # this is the _only_ bond for one atom
     # otherwise do recursive traversal
@@ -42,8 +43,8 @@ def reachable(a, b):
 
 
 def forms_small_angle(a, b, cutoff=60):
-    '''Return true if bond between a and b is part of a small angle
-    with a neighbor of a only.'''
+    """Return true if bond between a and b is part of a small angle
+    with a neighbor of a only."""
 
     for nbr in ob.OBAtomAtomIter(a):
         if nbr != b:
@@ -68,13 +69,13 @@ def make_obmol(xyz, atomic_numbers):
 
 
 def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
-    '''Custom implementation of ConnectTheDots.  This is similar to
-    OpenBabel's version, but is more willing to make long bonds 
-    (up to maxbond long) to keep the molecule connected.  It also 
+    """Custom implementation of ConnectTheDots.  This is similar to
+    OpenBabel's version, but is more willing to make long bonds
+    (up to maxbond long) to keep the molecule connected.  It also
     attempts to respect atom type information from struct.
     atoms and struct need to correspond in their order
     Assumes no hydrogens or existing bonds.
-    '''
+    """
 
     """
     for now, indicators only include 'is_aromatic'
@@ -103,10 +104,12 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
             mol.AddBond(a.GetIdx(), b.GetIdx(), 1, flag)
 
     atom_maxb = {}
-    for (i, a) in enumerate(atoms):
+    for i, a in enumerate(atoms):
         # set max valance to the smallest max allowed by openbabel or rdkit
         # since we want the molecule to be valid for both (rdkit is usually lower)
-        maxb = min(ob.GetMaxBonds(a.GetAtomicNum()), pt.GetDefaultValence(a.GetAtomicNum()))
+        maxb = min(
+            ob.GetMaxBonds(a.GetAtomicNum()), pt.GetDefaultValence(a.GetAtomicNum())
+        )
 
         if a.GetAtomicNum() == 16:  # sulfone check
             if count_nbrs_of_elem(a, 8) >= 2:
@@ -126,7 +129,7 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
             mol.DeleteBond(bond)
 
     def get_bond_info(biter):
-        '''Return bonds sorted by their distortion'''
+        """Return bonds sorted by their distortion"""
         bonds = [b for b in biter]
         binfo = []
         for bond in bonds:
@@ -134,7 +137,9 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
             # compute how far away from optimal we are
             a1 = bond.GetBeginAtom()
             a2 = bond.GetEndAtom()
-            ideal = ob.GetCovalentRad(a1.GetAtomicNum()) + ob.GetCovalentRad(a2.GetAtomicNum())
+            ideal = ob.GetCovalentRad(a1.GetAtomicNum()) + ob.GetCovalentRad(
+                a2.GetAtomicNum()
+            )
             stretch = bdist / ideal
             binfo.append((stretch, bond))
         binfo.sort(reverse=True, key=lambda t: t[0])  # most stretched bonds first
@@ -161,7 +166,10 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
     # prioritize removing hypervalency causing bonds, do more valent
     # constrained atoms first since their bonds introduce the most problems
     # with reachability (e.g. oxygen)
-    hypers = [(atom_maxb[a.GetIdx()], a.GetExplicitValence() - atom_maxb[a.GetIdx()], a) for a in atoms]
+    hypers = [
+        (atom_maxb[a.GetIdx()], a.GetExplicitValence() - atom_maxb[a.GetIdx()], a)
+        for a in atoms
+    ]
     hypers = sorted(hypers, key=lambda aa: (aa[0], -aa[1]))
     for mb, diff, a in hypers:
         if a.GetExplicitValence() <= atom_maxb[a.GetIdx()]:
@@ -176,7 +184,10 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
             a2 = bond.GetEndAtom()
 
             # get right valence
-            if a1.GetExplicitValence() > atom_maxb[a1.GetIdx()] or a2.GetExplicitValence() > atom_maxb[a2.GetIdx()]:
+            if (
+                a1.GetExplicitValence() > atom_maxb[a1.GetIdx()]
+                or a2.GetExplicitValence() > atom_maxb[a2.GetIdx()]
+            ):
                 # don't fragment the molecule
                 if not reachable(a1, a2):
                     continue
@@ -188,7 +199,7 @@ def connect_the_dots(mol, atoms, indicators, covalent_factor=1.3):
 
 
 def convert_ob_mol_to_rd_mol(ob_mol, struct=None):
-    '''Convert OBMol to RDKit mol, fixing up issues'''
+    """Convert OBMol to RDKit mol, fixing up issues"""
     ob_mol.DeleteHydrogens()
     n_atoms = ob_mol.NumAtoms()
     rd_mol = Chem.RWMol()
@@ -197,7 +208,11 @@ def convert_ob_mol_to_rd_mol(ob_mol, struct=None):
     for ob_atom in ob.OBMolAtomIter(ob_mol):
         rd_atom = Chem.Atom(ob_atom.GetAtomicNum())
         # TODO copy format charge
-        if ob_atom.IsAromatic() and ob_atom.IsInRing() and ob_atom.MemberOfRingSize() <= 6:
+        if (
+            ob_atom.IsAromatic()
+            and ob_atom.IsInRing()
+            and ob_atom.MemberOfRingSize() <= 6
+        ):
             # don't commit to being aromatic unless rdkit will be okay with the ring status
             # (this can happen if the atoms aren't fit well enough)
             rd_atom.SetIsAromatic(True)
@@ -222,7 +237,7 @@ def convert_ob_mol_to_rd_mol(ob_mol, struct=None):
         elif bond_order == 3:
             rd_mol.AddBond(i, j, Chem.BondType.TRIPLE)
         else:
-            raise Exception('unknown bond order {}'.format(bond_order))
+            raise Exception("unknown bond order {}".format(bond_order))
 
         if ob_bond.IsAromatic():
             bond = rd_mol.GetBondBetweenAtoms(i, j)
@@ -236,19 +251,23 @@ def convert_ob_mol_to_rd_mol(ob_mol, struct=None):
     positions = rd_mol.GetConformer().GetPositions()
     nonsingles = []
     for bond in rd_mol.GetBonds():
-        if bond.GetBondType() == Chem.BondType.DOUBLE or bond.GetBondType() == Chem.BondType.TRIPLE:
+        if (
+            bond.GetBondType() == Chem.BondType.DOUBLE
+            or bond.GetBondType() == Chem.BondType.TRIPLE
+        ):
             i = bond.GetBeginAtomIdx()
             j = bond.GetEndAtomIdx()
             dist = np.linalg.norm(positions[i] - positions[j])
             nonsingles.append((dist, bond))
     nonsingles.sort(reverse=True, key=lambda t: t[0])
 
-    for (d, bond) in nonsingles:
+    for d, bond in nonsingles:
         a1 = bond.GetBeginAtom()
         a2 = bond.GetEndAtom()
 
-        if calc_valence(a1) > pt.GetDefaultValence(a1.GetAtomicNum()) or \
-                calc_valence(a2) > pt.GetDefaultValence(a2.GetAtomicNum()):
+        if calc_valence(a1) > pt.GetDefaultValence(a1.GetAtomicNum()) or calc_valence(
+            a2
+        ) > pt.GetDefaultValence(a2.GetAtomicNum()):
             btype = Chem.BondType.SINGLE
             if bond.GetBondType() == Chem.BondType.TRIPLE:
                 btype = Chem.BondType.DOUBLE
@@ -302,8 +321,8 @@ def convert_ob_mol_to_rd_mol(ob_mol, struct=None):
 
 
 def calc_valence(rdatom):
-    '''Can call GetExplicitValence before sanitize, but need to
-    know this to fix up the molecule to prevent sanitization failures'''
+    """Can call GetExplicitValence before sanitize, but need to
+    know this to fix up the molecule to prevent sanitization failures"""
     cnt = 0.0
     for bond in rdatom.GetBonds():
         cnt += bond.GetBondTypeAsDouble()
@@ -311,10 +330,10 @@ def calc_valence(rdatom):
 
 
 def count_nbrs_of_elem(atom, atomic_num):
-    '''
+    """
     Count the number of neighbors atoms
     of atom with the given atomic_num.
-    '''
+    """
     count = 0
     for nbr in ob.OBAtomAtomIter(atom):
         if nbr.GetAtomicNum() == atomic_num:
@@ -323,8 +342,8 @@ def count_nbrs_of_elem(atom, atomic_num):
 
 
 def fixup(atoms, mol, indicators):
-    '''Set atom properties to match channel.  Keep doing this
-    to beat openbabel over the head with what we want to happen.'''
+    """Set atom properties to match channel.  Keep doing this
+    to beat openbabel over the head with what we want to happen."""
 
     """
     for now, indicators only include 'is_aromatic'
@@ -344,10 +363,10 @@ def fixup(atoms, mol, indicators):
         #         if atom.GetHvyDegree() == 1 and atom.GetAtomicNum() == 7:
         #             atom.SetImplicitHCount(2)
         #         else:
-        #             atom.SetImplicitHCount(1) 
+        #             atom.SetImplicitHCount(1)
 
         # elif ind[ATOM_FAMILIES_ID['Acceptor']]: # NOT AcceptorDonor because of else
-        #     atom.SetImplicitHCount(0)   
+        #     atom.SetImplicitHCount(0)
 
         if (atom.GetAtomicNum() in (7, 8)) and atom.IsInRing():  # Nitrogen, Oxygen
             # this is a little iffy, ommitting until there is more evidence it is a net positive
@@ -370,7 +389,10 @@ def raw_obmol_from_generated(data):
     return mol, atoms
 
 
-UPGRADE_BOND_ORDER = {Chem.BondType.SINGLE: Chem.BondType.DOUBLE, Chem.BondType.DOUBLE: Chem.BondType.TRIPLE}
+UPGRADE_BOND_ORDER = {
+    Chem.BondType.SINGLE: Chem.BondType.DOUBLE,
+    Chem.BondType.DOUBLE: Chem.BondType.TRIPLE,
+}
 
 
 def postprocess_rd_mol_1(rdmol):
@@ -396,7 +418,8 @@ def postprocess_rd_mol_1(rdmol):
         num_radical = atom.GetNumRadicalElectrons()
         if num_radical > 0:
             for j in nbh_list[idx]:
-                if j <= idx: continue
+                if j <= idx:
+                    continue
                 nb_atom = rdmol.GetAtomWithIdx(j)
                 nb_radical = nb_atom.GetNumRadicalElectrons()
                 if nb_radical > 0:
@@ -427,7 +450,7 @@ def postprocess_rd_mol_2(rdmol):
             atom_by_symb = {}
             for atom_idx in ring_a:
                 symb = rdmol.GetAtomWithIdx(atom_idx).GetSymbol()
-                if symb != 'C':
+                if symb != "C":
                     non_carbon.append(atom_idx)
                 if symb not in atom_by_symb:
                     atom_by_symb[symb] = [atom_idx]
@@ -435,13 +458,15 @@ def postprocess_rd_mol_2(rdmol):
                     atom_by_symb[symb].append(atom_idx)
             if len(non_carbon) == 2:
                 rdmol_edit.RemoveBond(*non_carbon)
-            if 'O' in atom_by_symb and len(atom_by_symb['O']) == 2:
-                rdmol_edit.RemoveBond(*atom_by_symb['O'])
-                rdmol_edit.GetAtomWithIdx(atom_by_symb['O'][0]).SetNumExplicitHs(
-                    rdmol_edit.GetAtomWithIdx(atom_by_symb['O'][0]).GetNumExplicitHs() + 1
+            if "O" in atom_by_symb and len(atom_by_symb["O"]) == 2:
+                rdmol_edit.RemoveBond(*atom_by_symb["O"])
+                rdmol_edit.GetAtomWithIdx(atom_by_symb["O"][0]).SetNumExplicitHs(
+                    rdmol_edit.GetAtomWithIdx(atom_by_symb["O"][0]).GetNumExplicitHs()
+                    + 1
                 )
-                rdmol_edit.GetAtomWithIdx(atom_by_symb['O'][1]).SetNumExplicitHs(
-                    rdmol_edit.GetAtomWithIdx(atom_by_symb['O'][1]).GetNumExplicitHs() + 1
+                rdmol_edit.GetAtomWithIdx(atom_by_symb["O"][1]).SetNumExplicitHs(
+                    rdmol_edit.GetAtomWithIdx(atom_by_symb["O"][1]).GetNumExplicitHs()
+                    + 1
                 )
     rdmol = rdmol_edit.GetMol()
 
@@ -475,7 +500,7 @@ def reconstruct_from_generated(xyz, atomic_nums, aromatic=None, basic_mode=True)
     mol.PerceiveBondOrders()
     fixup(atoms, mol, indicators)
 
-    for (i, a) in enumerate(atoms):
+    for i, a in enumerate(atoms):
         ob.OBAtomAssignTypicalImplicitHydrogens(a)
     fixup(atoms, mol, indicators)
 

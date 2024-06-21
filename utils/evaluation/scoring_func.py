@@ -80,15 +80,15 @@ def get_chem(mol):
     # hdon_score = Lipinski.NumHDonors(mol)
 
     return {
-        'qed': qed_score,
-        'sa': sa_score,
-        'logp': logp_score,
-        'lipinski': lipinski_score,
-        'ring_size': ring_size
+        "qed": qed_score,
+        "sa": sa_score,
+        "logp": logp_score,
+        "lipinski": lipinski_score,
+        "ring_size": ring_size,
     }
 
 
-def get_molecule_force_field(mol, conf_id=None, force_field='mmff', **kwargs):
+def get_molecule_force_field(mol, conf_id=None, force_field="mmff", **kwargs):
     """
     Get a force field for a molecule.
     Parameters
@@ -102,21 +102,20 @@ def get_molecule_force_field(mol, conf_id=None, force_field='mmff', **kwargs):
     kwargs : dict, optional
         Keyword arguments for force field constructor.
     """
-    if force_field == 'uff':
-        ff = AllChem.UFFGetMoleculeForceField(
-            mol, confId=conf_id, **kwargs)
-    elif force_field.startswith('mmff'):
+    if force_field == "uff":
+        ff = AllChem.UFFGetMoleculeForceField(mol, confId=conf_id, **kwargs)
+    elif force_field.startswith("mmff"):
         AllChem.MMFFSanitizeMolecule(mol)
-        mmff_props = AllChem.MMFFGetMoleculeProperties(
-            mol, mmffVariant=force_field)
+        mmff_props = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant=force_field)
         ff = AllChem.MMFFGetMoleculeForceField(
-            mol, mmff_props, confId=conf_id, **kwargs)
+            mol, mmff_props, confId=conf_id, **kwargs
+        )
     else:
         raise ValueError("Invalid force_field {}".format(force_field))
     return ff
 
 
-def get_conformer_energies(mol, force_field='mmff'):
+def get_conformer_energies(mol, force_field="mmff"):
     """
     Calculate conformer energies.
     Parameters
@@ -132,7 +131,9 @@ def get_conformer_energies(mol, force_field='mmff'):
     """
     energies = []
     for conf in mol.GetConformers():
-        ff = get_molecule_force_field(mol, conf_id=conf.GetId(), force_field=force_field)
+        ff = get_molecule_force_field(
+            mol, conf_id=conf.GetId(), force_field=force_field
+        )
         energy = ff.CalcEnergy()
         energies.append(energy)
     energies = np.asarray(energies, dtype=float)

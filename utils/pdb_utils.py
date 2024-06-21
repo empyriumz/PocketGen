@@ -23,55 +23,88 @@ class AminoAcid:
         self.sidechain = sidechain
 
     def __str__(self):
-        return f'{self.idx} {self.symbol} {self.abrv} {self.sidechain}'
+        return f"{self.idx} {self.symbol} {self.abrv} {self.sidechain}"
 
 
 class AminoAcidVocab:
 
-    MAX_ATOM_NUMBER = 14   # 4 backbone atoms + up to 10 sidechain atoms
+    MAX_ATOM_NUMBER = 14  # 4 backbone atoms + up to 10 sidechain atoms
 
     def __init__(self):
-        self.backbone_atoms = ['N', 'CA', 'C', 'O']
-        self.PAD, self.MASK = '#', '*'
-        self.BOA, self.BOH, self.BOL = '&', '+', '-' # begin of antigen, heavy chain, light chain
-        specials = [# special added
-                (self.PAD, 'PAD'), (self.MASK, 'MASK'), # mask for masked / unknown residue
-                (self.BOA, '<X>'), (self.BOH, '<H>'), (self.BOL, '<L>')
-            ]
+        self.backbone_atoms = ["N", "CA", "C", "O"]
+        self.PAD, self.MASK = "#", "*"
+        self.BOA, self.BOH, self.BOL = (
+            "&",
+            "+",
+            "-",
+        )  # begin of antigen, heavy chain, light chain
+        specials = [  # special added
+            (self.PAD, "PAD"),
+            (self.MASK, "MASK"),  # mask for masked / unknown residue
+            (self.BOA, "<X>"),
+            (self.BOH, "<H>"),
+            (self.BOL, "<L>"),
+        ]
 
         aas = [
-            ('A', 'ALA'), ('R', 'ARG'), ('N', 'ASN'), ('D', 'ASP'),
-            ('C', 'CYS'), ('Q', 'GLN'), ('E', 'GLU'), ('G', 'GLY'),
-            ('H', 'HIS'), ('I', 'ILE'), ('L', 'LEU'), ('K', 'LYS'),
-            ('M', 'MET'), ('F', 'PHE'), ('P', 'PRO'), ('S', 'SER'),
-            ('T', 'THR'), ('W', 'TRP'), ('Y', 'TYR'), ('V', 'VAL'),   # 20 aa
+            ("A", "ALA"),
+            ("R", "ARG"),
+            ("N", "ASN"),
+            ("D", "ASP"),
+            ("C", "CYS"),
+            ("Q", "GLN"),
+            ("E", "GLU"),
+            ("G", "GLY"),
+            ("H", "HIS"),
+            ("I", "ILE"),
+            ("L", "LEU"),
+            ("K", "LYS"),
+            ("M", "MET"),
+            ("F", "PHE"),
+            ("P", "PRO"),
+            ("S", "SER"),
+            ("T", "THR"),
+            ("W", "TRP"),
+            ("Y", "TYR"),
+            ("V", "VAL"),  # 20 aa
             # ('U', 'SEC') # 21 aa for eukaryote
         ]
 
-        # max number of sidechain atoms: 10        
-        self.atom_pad, self.atom_mask = 'p', 'm'
-        self.atom_pos_mask, self.atom_pos_bb, self.atom_pos_pad = 'm', 'b', 'p'
+        # max number of sidechain atoms: 10
+        self.atom_pad, self.atom_mask = "p", "m"
+        self.atom_pos_mask, self.atom_pos_bb, self.atom_pos_pad = "m", "b", "p"
         sidechain_map = {
-            'G': [],   # -H
-            'A': ['CB'],  # -CH3
-            'V': ['CB', 'CG1', 'CG2'],  # -CH-(CH3)2
-            'L': ['CB', 'CG', 'CD1', 'CD2'],  # -CH2-CH(CH3)2
-            'I': ['CB', 'CG1', 'CG2', 'CD1'], # -CH(CH3)-CH2-CH3
-            'F': ['CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ'],  # -CH2-C6H5
-            'W': ['CB', 'CG', 'CD1', 'CD2', 'NE1', 'CE2', 'CE3', 'CZ2', 'CZ3', 'CH2'],  # -CH2-C8NH6
-            'Y': ['CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ', 'OH'],  # -CH2-C6H4-OH
-            'D': ['CB', 'CG', 'OD1', 'OD2'],  # -CH2-COOH
-            'H': ['CB', 'CG', 'ND1', 'CD2', 'CE1', 'NE2'],  # -CH2-C3H3N2
-            'N': ['CB', 'CG', 'OD1', 'ND2'],  # -CH2-CONH2
-            'E': ['CB', 'CG', 'CD', 'OE1', 'OE2'],  # -(CH2)2-COOH
-            'K': ['CB', 'CG', 'CD', 'CE', 'NZ'],  # -(CH2)4-NH2
-            'Q': ['CB', 'CG', 'CD', 'OE1', 'NE2'],  # -(CH2)-CONH2
-            'M': ['CB', 'CG', 'SD', 'CE'],  # -(CH2)2-S-CH3
-            'R': ['CB', 'CG', 'CD', 'NE', 'CZ', 'NH1', 'NH2'],  # -(CH2)3-NHC(NH)NH2
-            'S': ['CB', 'OG'],  # -CH2-OH
-            'T': ['CB', 'OG1', 'CG2'],  # -CH(CH3)-OH
-            'C': ['CB', 'SG'],  # -CH2-SH
-            'P': ['CB', 'CG', 'CD'],  # -C3H6
+            "G": [],  # -H
+            "A": ["CB"],  # -CH3
+            "V": ["CB", "CG1", "CG2"],  # -CH-(CH3)2
+            "L": ["CB", "CG", "CD1", "CD2"],  # -CH2-CH(CH3)2
+            "I": ["CB", "CG1", "CG2", "CD1"],  # -CH(CH3)-CH2-CH3
+            "F": ["CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"],  # -CH2-C6H5
+            "W": [
+                "CB",
+                "CG",
+                "CD1",
+                "CD2",
+                "NE1",
+                "CE2",
+                "CE3",
+                "CZ2",
+                "CZ3",
+                "CH2",
+            ],  # -CH2-C8NH6
+            "Y": ["CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"],  # -CH2-C6H4-OH
+            "D": ["CB", "CG", "OD1", "OD2"],  # -CH2-COOH
+            "H": ["CB", "CG", "ND1", "CD2", "CE1", "NE2"],  # -CH2-C3H3N2
+            "N": ["CB", "CG", "OD1", "ND2"],  # -CH2-CONH2
+            "E": ["CB", "CG", "CD", "OE1", "OE2"],  # -(CH2)2-COOH
+            "K": ["CB", "CG", "CD", "CE", "NZ"],  # -(CH2)4-NH2
+            "Q": ["CB", "CG", "CD", "OE1", "NE2"],  # -(CH2)-CONH2
+            "M": ["CB", "CG", "SD", "CE"],  # -(CH2)2-S-CH3
+            "R": ["CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"],  # -(CH2)3-NHC(NH)NH2
+            "S": ["CB", "OG"],  # -CH2-OH
+            "T": ["CB", "OG1", "CG2"],  # -CH(CH3)-OH
+            "C": ["CB", "SG"],  # -CH2-SH
+            "P": ["CB", "CG", "CD"],  # -C3H6
         }
 
         self.chi_angles_atoms = {
@@ -121,22 +154,11 @@ class AminoAcidVocab:
         }
 
         self.sidechain_bonds = {
-            "ALA": { "CA": ["CB"] },
+            "ALA": {"CA": ["CB"]},
             "GLY": {},
-            "VAL": {
-                "CA": ["CB"],
-                "CB": ["CG1", "CG2"]
-            },
-            "LEU": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["CD2", "CD1"]
-            },
-            "ILE": {
-                "CA": ["CB"],
-                "CB": ["CG1", "CG2"],
-                "CG1": ["CD1"]
-            },
+            "VAL": {"CA": ["CB"], "CB": ["CG1", "CG2"]},
+            "LEU": {"CA": ["CB"], "CB": ["CG"], "CG": ["CD2", "CD1"]},
+            "ILE": {"CA": ["CB"], "CB": ["CG1", "CG2"], "CG1": ["CD1"]},
             "MET": {
                 "CA": ["CB"],
                 "CB": ["CG"],
@@ -149,7 +171,7 @@ class AminoAcidVocab:
                 "CG": ["CD1", "CD2"],
                 "CD1": ["CE1"],
                 "CD2": ["CE2"],
-                "CE1": ["CZ"]
+                "CE1": ["CZ"],
             },
             "TRP": {
                 "CA": ["CB"],
@@ -159,25 +181,12 @@ class AminoAcidVocab:
                 "CD2": ["CE2", "CE3"],
                 "CE2": ["CZ2"],
                 "CZ2": ["CH2"],
-                "CE3": ["CZ3"]
+                "CE3": ["CZ3"],
             },
-            "PRO": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["CD"]
-            },
-            "SER": {
-                "CA": ["CB"],
-                "CB": ["OG"]
-            },
-            "THR": {
-                "CA": ["CB"],
-                "CB": ["OG1", "CG2"]
-            },
-            "CYS": {
-                "CA": ["CB"],
-                "CB": ["SG"]
-            },
+            "PRO": {"CA": ["CB"], "CB": ["CG"], "CG": ["CD"]},
+            "SER": {"CA": ["CB"], "CB": ["OG"]},
+            "THR": {"CA": ["CB"], "CB": ["OG1", "CG2"]},
+            "CYS": {"CA": ["CB"], "CB": ["SG"]},
             "TYR": {
                 "CA": ["CB"],
                 "CB": ["CG"],
@@ -185,36 +194,18 @@ class AminoAcidVocab:
                 "CD1": ["CE1"],
                 "CD2": ["CE2"],
                 "CE1": ["CZ"],
-                "CZ": ["OH"]
+                "CZ": ["OH"],
             },
-            "ASN": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["OD1", "ND2"]
-            },
-            "GLN": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["CD"],
-                "CD": ["OE1", "NE2"]
-            },
-            "ASP": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["OD1", "OD2"]
-            },
-            "GLU": {
-                "CA": ["CB"],
-                "CB": ["CG"],
-                "CG": ["CD"],
-                "CD": ["OE1", "OE2"]
-            },
+            "ASN": {"CA": ["CB"], "CB": ["CG"], "CG": ["OD1", "ND2"]},
+            "GLN": {"CA": ["CB"], "CB": ["CG"], "CG": ["CD"], "CD": ["OE1", "NE2"]},
+            "ASP": {"CA": ["CB"], "CB": ["CG"], "CG": ["OD1", "OD2"]},
+            "GLU": {"CA": ["CB"], "CB": ["CG"], "CG": ["CD"], "CD": ["OE1", "OE2"]},
             "LYS": {
                 "CA": ["CB"],
                 "CB": ["CG"],
                 "CG": ["CD"],
                 "CD": ["CE"],
-                "CE": ["NZ"]
+                "CE": ["NZ"],
             },
             "ARG": {
                 "CA": ["CB"],
@@ -222,20 +213,22 @@ class AminoAcidVocab:
                 "CG": ["CD"],
                 "CD": ["NE"],
                 "NE": ["CZ"],
-                "CZ": ["NH1", "NH2"]
+                "CZ": ["NH1", "NH2"],
             },
             "HIS": {
                 "CA": ["CB"],
                 "CB": ["CG"],
                 "CG": ["ND1", "CD2"],
                 "ND1": ["CE1"],
-                "CD2": ["NE2"]
-            }
+                "CD2": ["NE2"],
+            },
         }
-        
 
         _all = aas + specials
-        self.amino_acids = [AminoAcid(symbol, abrv, sidechain_map.get(symbol, [])) for symbol, abrv in _all]
+        self.amino_acids = [
+            AminoAcid(symbol, abrv, sidechain_map.get(symbol, []))
+            for symbol, abrv in _all
+        ]
         self.symbol2idx, self.abrv2idx = {}, {}
         for i, aa in enumerate(self.amino_acids):
             self.symbol2idx[aa.symbol] = i
@@ -244,14 +237,24 @@ class AminoAcidVocab:
         self.special_mask = [0 for _ in aas] + [1 for _ in specials]
 
         # atom level vocab
-        self.idx2atom = [self.atom_pad, self.atom_mask, 'C', 'N', 'O', 'S']
-        self.idx2atom_pos = [self.atom_pos_pad, self.atom_pos_mask, self.atom_pos_bb, 'B', 'G', 'D', 'E', 'Z', 'H']
+        self.idx2atom = [self.atom_pad, self.atom_mask, "C", "N", "O", "S"]
+        self.idx2atom_pos = [
+            self.atom_pos_pad,
+            self.atom_pos_mask,
+            self.atom_pos_bb,
+            "B",
+            "G",
+            "D",
+            "E",
+            "Z",
+            "H",
+        ]
         self.atom2idx, self.atom_pos2idx = {}, {}
         for i, atom in enumerate(self.idx2atom):
             self.atom2idx[atom] = i
         for i, atom_pos in enumerate(self.idx2atom_pos):
             self.atom_pos2idx[atom_pos] = i
-    
+
     def abrv_to_symbol(self, abrv):
         idx = self.abrv_to_idx(abrv)
         return None if idx is None else self.amino_acids[idx].symbol
@@ -267,7 +270,7 @@ class AminoAcidVocab:
     def symbol_to_idx(self, symbol):
         symbol = symbol.upper()
         return self.symbol2idx.get(symbol, None)
-    
+
     def idx_to_symbol(self, idx):
         return self.amino_acids[idx].symbol
 
@@ -279,7 +282,7 @@ class AminoAcidVocab:
 
     def get_mask_idx(self):
         return self.symbol_to_idx(self.MASK)
-    
+
     def get_special_mask(self):
         return copy(self.special_mask)
 
@@ -323,25 +326,25 @@ class AminoAcidVocab:
     def get_sidechain_info(self, symbol):
         idx = self.symbol_to_idx(symbol)
         return copy(self.amino_acids[idx].sidechain)
-    
+
     def get_sidechain_geometry(self, symbol):
         abrv = self.symbol_to_abrv(symbol)
         chi_angles_atoms = copy(self.chi_angles_atoms[abrv])
         sidechain_bonds = self.sidechain_bonds[abrv]
         return (chi_angles_atoms, sidechain_bonds)
-    
+
     def get_atom_pad_idx(self):
         return self.atom2idx[self.atom_pad]
-    
+
     def get_atom_mask_idx(self):
         return self.atom2idx[self.atom_mask]
-    
+
     def get_atom_pos_pad_idx(self):
         return self.atom_pos2idx[self.atom_pos_pad]
 
     def get_atom_pos_mask_idx(self):
         return self.atom_pos2idx[self.atom_pos_mask]
-    
+
     def idx_to_atom(self, idx):
         return self.idx2atom[idx]
 
@@ -350,13 +353,13 @@ class AminoAcidVocab:
 
     def idx_to_atom_pos(self, idx):
         return self.idx2atom_pos[idx]
-    
+
     def atom_pos_to_idx(self, atom_pos):
         return self.atom_pos2idx[atom_pos]
 
     def get_num_atom_type(self):
         return len(self.idx2atom)
-    
+
     def get_num_atom_pos(self):
         return len(self.idx2atom_pos)
 
@@ -371,20 +374,19 @@ VOCAB = AminoAcidVocab()
 
 
 def format_aa_abrv(abrv):  # special cases
-    if abrv == 'MSE':
-        return 'MET' # substitue MSE with MET
+    if abrv == "MSE":
+        return "MET"  # substitue MSE with MET
     return abrv
 
 
 def fetch_from_pdb(identifier):
     # example identifier: 1FBI
-    url = 'https://data.rcsb.org/rest/v1/core/entry/' + identifier
+    url = "https://data.rcsb.org/rest/v1/core/entry/" + identifier
     res = requests.get(url)
     if res.status_code != 200:
         return None
-    url = f'https://files.rcsb.org/download/{identifier}.pdb'
+    url = f"https://files.rcsb.org/download/{identifier}.pdb"
     text = requests.get(url)
     data = res.json()
-    data['pdb'] = text.text
+    data["pdb"] = text.text
     return data
-

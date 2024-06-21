@@ -3,7 +3,10 @@ import rdkit.Chem as Chem
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import minimum_spanning_tree
 from collections import defaultdict
-from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
+from rdkit.Chem.EnumerateStereoisomers import (
+    EnumerateStereoisomers,
+    StereoEnumerationOptions,
+)
 from rdkit.Chem.Descriptors import MolLogP, qed
 from torch_geometric.data import Data, Batch
 from random import sample
@@ -13,6 +16,7 @@ from math import sqrt
 import torch
 from rdkit.Chem import BRICS
 from copy import deepcopy
+
 MST_MAX_WEIGHT = 100
 MAX_NCAND = 2000
 
@@ -22,14 +26,21 @@ def vina_score(mol):
     if use_uff:
         UFFOptimizeMolecule(ligand_rdmol)
 
+
 def lipinski(mol):
-    if qed(mol)<=5 and Chem.Lipinski.NumHDonors(mol)<=5 and Chem.Lipinski.NumHAcceptors(mol)<=10 and Chem.Descriptors.ExactMolWt(mol)<=500 and Chem.Lipinski.NumRotatableBonds(mol)<=5:
+    if (
+        qed(mol) <= 5
+        and Chem.Lipinski.NumHDonors(mol) <= 5
+        and Chem.Lipinski.NumHAcceptors(mol) <= 10
+        and Chem.Descriptors.ExactMolWt(mol) <= 500
+        and Chem.Lipinski.NumRotatableBonds(mol) <= 5
+    ):
         return True
     else:
         return False
 
 
-def list_filter(a,b):
+def list_filter(a, b):
     filter = []
     for i in a:
         if i in b:
@@ -38,7 +49,7 @@ def list_filter(a,b):
 
 
 def rand_rotate(dir, ref, pos, alpha=None):
-    #dir = dir/torch.norm(dir)
+    # dir = dir/torch.norm(dir)
     if alpha is None:
         alpha = torch.randn(1)
     n_pos = pos.shape[0]
@@ -47,13 +58,26 @@ def rand_rotate(dir, ref, pos, alpha=None):
     M = torch.dot(dir, ref)
     nx, ny, nz = dir[0], dir[1], dir[2]
     x0, y0, z0 = ref[0], ref[1], ref[2]
-    T = torch.tensor([nx ** 2 * K + cos, nx * ny * K - nz * sin, nx * nz * K + ny * sin,
-         (x0 - nx * M) * K + (nz * y0 - ny * z0) * sin,
-         nx * ny * K + nz * sin, ny ** 2 * K + cos, ny * nz * K - nx * sin,
-         (y0 - ny * M) * K + (nx * z0 - nz * x0) * sin,
-         nx * nz * K - ny * sin, ny * nz * K + nx * sin, nz ** 2 * K + cos,
-         (z0 - nz * M) * K + (ny * x0 - nx * y0) * sin,
-         0, 0, 0, 1]).reshape(4, 4)
+    T = torch.tensor(
+        [
+            nx**2 * K + cos,
+            nx * ny * K - nz * sin,
+            nx * nz * K + ny * sin,
+            (x0 - nx * M) * K + (nz * y0 - ny * z0) * sin,
+            nx * ny * K + nz * sin,
+            ny**2 * K + cos,
+            ny * nz * K - nx * sin,
+            (y0 - ny * M) * K + (nx * z0 - nz * x0) * sin,
+            nx * nz * K - ny * sin,
+            ny * nz * K + nx * sin,
+            nz**2 * K + cos,
+            (z0 - nz * M) * K + (ny * x0 - nx * y0) * sin,
+            0,
+            0,
+            0,
+            1,
+        ]
+    ).reshape(4, 4)
     pos = torch.cat([pos.t(), torch.ones(n_pos).unsqueeze(0)], dim=0)
     rotated_pos = torch.mm(T, pos)[:3]
     return rotated_pos.t()
@@ -67,7 +91,7 @@ def kabsch(A, B):
     # R = 3x3 rotation matrix (B to A)
     # t = 3x1 translation vector (B to A)
     assert len(A) == len(B)
-    N = A.shape[0] # total points
+    N = A.shape[0]  # total points
     centroid_A = np.mean(A, axis=0)
     centroid_B = np.mean(B, axis=0)
     # center the points
@@ -85,21 +109,21 @@ def kabsch(A, B):
 
 
 def kabsch_torch(A, B, C):
-    A=A.double()
-    B=B.double()
-    C=C.double()
+    A = A.double()
+    B = B.double()
+    C = C.double()
     a_mean = A.mean(dim=0, keepdims=True)
     b_mean = B.mean(dim=0, keepdims=True)
     A_c = A - a_mean
     B_c = B - b_mean
     # Covariance matrix
-    H = torch.matmul(A_c.transpose(0,1), B_c)  # [B, 3, 3]
+    H = torch.matmul(A_c.transpose(0, 1), B_c)  # [B, 3, 3]
     U, S, V = torch.svd(H)
     # Rotation matrix
-    R = torch.matmul(V, U.transpose(0,1))  # [B, 3, 3]
+    R = torch.matmul(V, U.transpose(0, 1))  # [B, 3, 3]
     # Translation vector
-    t = b_mean - torch.matmul(R, a_mean.transpose(0,1)).transpose(0,1)
-    C_aligned = torch.matmul(R, C.transpose(0,1)).transpose(0,1) + t
+    t = b_mean - torch.matmul(R, a_mean.transpose(0, 1)).transpose(0, 1)
+    C_aligned = torch.matmul(R, C.transpose(0, 1)).transpose(0, 1) + t
     return C_aligned, R, t
 
 
@@ -138,15 +162,23 @@ def decode_stereo(smiles2D):
     mol = Chem.MolFromSmiles(smiles2D)
     dec_isomers = list(EnumerateStereoisomers(mol))
 
-    dec_isomers = [Chem.MolFromSmiles(Chem.MolToSmiles(mol, isomericSmiles=True)) for mol in dec_isomers]
+    dec_isomers = [
+        Chem.MolFromSmiles(Chem.MolToSmiles(mol, isomericSmiles=True))
+        for mol in dec_isomers
+    ]
     smiles3D = [Chem.MolToSmiles(mol, isomericSmiles=True) for mol in dec_isomers]
 
-    chiralN = [atom.GetIdx() for atom in dec_isomers[0].GetAtoms() if
-               int(atom.GetChiralTag()) > 0 and atom.GetSymbol() == "N"]
+    chiralN = [
+        atom.GetIdx()
+        for atom in dec_isomers[0].GetAtoms()
+        if int(atom.GetChiralTag()) > 0 and atom.GetSymbol() == "N"
+    ]
     if len(chiralN) > 0:
         for mol in dec_isomers:
             for idx in chiralN:
-                mol.GetAtomWithIdx(idx).SetChiralTag(Chem.rdchem.ChiralType.CHI_UNSPECIFIED)
+                mol.GetAtomWithIdx(idx).SetChiralTag(
+                    Chem.rdchem.ChiralType.CHI_UNSPECIFIED
+                )
             smiles3D.append(Chem.MolToSmiles(mol, isomericSmiles=True))
 
     return smiles3D
@@ -169,7 +201,7 @@ def copy_atom(atom):
 
 
 def copy_edit_mol(mol):
-    new_mol = Chem.RWMol(Chem.MolFromSmiles(''))
+    new_mol = Chem.RWMol(Chem.MolFromSmiles(""))
     for atom in mol.GetAtoms():
         new_atom = copy_atom(atom)
         new_mol.AddAtom(new_atom)
@@ -182,7 +214,7 @@ def copy_edit_mol(mol):
 
 
 def get_submol(mol, idxs, mark=[]):
-    new_mol = Chem.RWMol(Chem.MolFromSmiles(''))
+    new_mol = Chem.RWMol(Chem.MolFromSmiles(""))
     map = {}
     for atom in mol.GetAtoms():
         if atom.GetIdx() in idxs:
@@ -210,7 +242,9 @@ def get_clique_mol(mol, atoms):
 
 
 def get_clique_mol_simple(mol, cluster):
-    smile_cluster = Chem.MolFragmentToSmiles(mol, cluster, canonical=True, kekuleSmiles=True)
+    smile_cluster = Chem.MolFragmentToSmiles(
+        mol, cluster, canonical=True, kekuleSmiles=True
+    )
     mol_cluster = Chem.MolFromSmiles(smile_cluster, sanitize=False)
     return mol_cluster
 
@@ -248,7 +282,9 @@ def tree_decomp(mol, reference_vocab=None):
                 if len(inter) > 2:
                     merge = clusters[i] | clusters[j]
                     if reference_vocab is not None:
-                        smile_merge = Chem.MolFragmentToSmiles(mol, merge, canonical=True, kekuleSmiles=True)
+                        smile_merge = Chem.MolFragmentToSmiles(
+                            mol, merge, canonical=True, kekuleSmiles=True
+                        )
                         if reference_vocab[smile_merge] <= 99:
                             continue
                     clusters[i] = merge
@@ -296,7 +332,7 @@ def Brics_decomp(mol, reference_vocab=None):
         a2 = bond.GetEndAtom().GetIdx()
         if not bond.GetBeginAtom().IsInRing() and not bond.GetEndAtom().IsInRing():
             clusters.append({a1, a2})
-    '''
+    """
     bre = list(BRICS.FindBRICSBonds(mol))
     if len(bre) != 0:
         for bond in bre:
@@ -305,7 +341,7 @@ def Brics_decomp(mol, reference_vocab=None):
             else:
                 clusters.remove([bond[0][1], bond[0][0]])
             clusters.append([bond[0][0]])
-            clusters.append([bond[0][1]])'''
+            clusters.append([bond[0][1]])"""
 
     ssr = [set(x) for x in Chem.GetSymmSSSR(mol)]
     # remove too large circles
@@ -331,7 +367,10 @@ def Brics_decomp(mol, reference_vocab=None):
 
 
 def atom_equal(a1, a2):
-    return a1.GetSymbol() == a2.GetSymbol() and a1.GetFormalCharge() == a2.GetFormalCharge()
+    return (
+        a1.GetSymbol() == a2.GetSymbol()
+        and a1.GetFormalCharge() == a2.GetFormalCharge()
+    )
 
 
 # Bond type not considered because all aromatic (so SINGLE matches DOUBLE)
@@ -341,8 +380,11 @@ def ring_bond_equal(bond1, bond2, reverse=False):
         b2 = (bond2.GetEndAtom(), bond2.GetBeginAtom())
     else:
         b2 = (bond2.GetBeginAtom(), bond2.GetEndAtom())
-    return atom_equal(b1[0], b2[0]) and atom_equal(b1[1], b2[1]) and bond1.GetBondType() == bond2.GetBondType()
-
+    return (
+        atom_equal(b1[0], b2[0])
+        and atom_equal(b1[1], b2[1])
+        and bond1.GetBondType() == bond2.GetBondType()
+    )
 
 
 def attach(ctr_mol, nei_mol, amap):
@@ -409,11 +451,16 @@ def enum_attach(ctr_mol, nei_mol):
     att_confs = []
     valence_ctr = {i: 0 for i in range(ctr_mol.GetNumAtoms())}
     valence_nei = {i: 0 for i in range(nei_mol.GetNumAtoms())}
-    ctr_bonds = [bond for bond in ctr_mol.GetBonds() if bond.GetBeginAtom().GetAtomMapNum() == 1 and bond.GetEndAtom().GetAtomMapNum() == 1]
+    ctr_bonds = [
+        bond
+        for bond in ctr_mol.GetBonds()
+        if bond.GetBeginAtom().GetAtomMapNum() == 1
+        and bond.GetEndAtom().GetAtomMapNum() == 1
+    ]
     ctr_atoms = [atom for atom in ctr_mol.GetAtoms() if atom.GetAtomMapNum() == 1]
     if nei_mol.GetNumBonds() == 1:  # neighbor is a bond
         bond = nei_mol.GetBondWithIdx(0)
-        #bond_val = int(bond.GetBondType())
+        # bond_val = int(bond.GetBondType())
         bond_val = int(bond.GetBondTypeAsDouble())
         b1, b2 = bond.GetBeginAtom(), bond.GetEndAtom()
 
@@ -433,7 +480,10 @@ def enum_attach(ctr_mol, nei_mol):
             for a2 in nei_mol.GetAtoms():
                 if atom_equal(a1, a2):
                     # Optimize if atom is carbon (other atoms may change valence)
-                    if a1.GetAtomicNum() == 6 and a1.GetTotalNumHs() + a2.GetTotalNumHs() < 4:
+                    if (
+                        a1.GetAtomicNum() == 6
+                        and a1.GetTotalNumHs() + a2.GetTotalNumHs() < 4
+                    ):
                         continue
                     amap = {a2.GetIdx(): a1.GetIdx()}
                     att_confs.append(amap)
@@ -443,13 +493,17 @@ def enum_attach(ctr_mol, nei_mol):
             for b1 in ctr_bonds:
                 for b2 in nei_mol.GetBonds():
                     if ring_bond_equal(b1, b2):
-                        amap = {b2.GetBeginAtom().GetIdx(): b1.GetBeginAtom().GetIdx(),
-                                b2.GetEndAtom().GetIdx(): b1.GetEndAtom().GetIdx()}
+                        amap = {
+                            b2.GetBeginAtom().GetIdx(): b1.GetBeginAtom().GetIdx(),
+                            b2.GetEndAtom().GetIdx(): b1.GetEndAtom().GetIdx(),
+                        }
                         att_confs.append(amap)
 
                     if ring_bond_equal(b1, b2, reverse=True):
-                        amap = {b2.GetEndAtom().GetIdx(): b1.GetBeginAtom().GetIdx(),
-                                b2.GetBeginAtom().GetIdx(): b1.GetEndAtom().GetIdx()}
+                        amap = {
+                            b2.GetEndAtom().GetIdx(): b1.GetBeginAtom().GetIdx(),
+                            b2.GetBeginAtom().GetIdx(): b1.GetEndAtom().GetIdx(),
+                        }
                         att_confs.append(amap)
     return att_confs
 
@@ -488,35 +542,39 @@ def enumerate_assemble(mol, idxs, current, next):
 
 # allowable node and edge features
 allowable_features = {
-    'possible_atomic_num_list' : list(range(1, 119)),
-    'possible_formal_charge_list' : [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
-    'possible_chirality_list' : [
+    "possible_atomic_num_list": list(range(1, 119)),
+    "possible_formal_charge_list": [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
+    "possible_chirality_list": [
         Chem.rdchem.ChiralType.CHI_UNSPECIFIED,
         Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW,
         Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW,
-        Chem.rdchem.ChiralType.CHI_OTHER
+        Chem.rdchem.ChiralType.CHI_OTHER,
     ],
-    'possible_hybridization_list' : [
+    "possible_hybridization_list": [
         Chem.rdchem.HybridizationType.S,
-        Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,
-        Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.SP3D,
-        Chem.rdchem.HybridizationType.SP3D2, Chem.rdchem.HybridizationType.UNSPECIFIED
+        Chem.rdchem.HybridizationType.SP,
+        Chem.rdchem.HybridizationType.SP2,
+        Chem.rdchem.HybridizationType.SP3,
+        Chem.rdchem.HybridizationType.SP3D,
+        Chem.rdchem.HybridizationType.SP3D2,
+        Chem.rdchem.HybridizationType.UNSPECIFIED,
     ],
-    'possible_numH_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8],
-    'possible_implicit_valence_list' : [0, 1, 2, 3, 4, 5, 6],
-    'possible_degree_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    'possible_bonds' : [
+    "possible_numH_list": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    "possible_implicit_valence_list": [0, 1, 2, 3, 4, 5, 6],
+    "possible_degree_list": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "possible_bonds": [
         Chem.rdchem.BondType.SINGLE,
         Chem.rdchem.BondType.DOUBLE,
         Chem.rdchem.BondType.TRIPLE,
-        Chem.rdchem.BondType.AROMATIC
+        Chem.rdchem.BondType.AROMATIC,
     ],
-    'possible_bond_dirs' : [ # only for double bond stereo information
+    "possible_bond_dirs": [  # only for double bond stereo information
         Chem.rdchem.BondDir.NONE,
         Chem.rdchem.BondDir.ENDUPRIGHT,
-        Chem.rdchem.BondDir.ENDDOWNRIGHT
-    ]
+        Chem.rdchem.BondDir.ENDDOWNRIGHT,
+    ],
 }
+
 
 def mol_to_graph_data_obj_simple(mol):
     """
@@ -527,27 +585,26 @@ def mol_to_graph_data_obj_simple(mol):
     :return: graph data object with the attributes: x, edge_index, edge_attr
     """
     # atoms
-    num_atom_features = 2   # atom type,  chirality tag
+    num_atom_features = 2  # atom type,  chirality tag
     atom_features_list = []
     for atom in mol.GetAtoms():
-        atom_feature = [allowable_features['possible_atomic_num_list'].index(
-            atom.GetAtomicNum())] + [allowable_features[
-            'possible_chirality_list'].index(atom.GetChiralTag())]
+        atom_feature = [
+            allowable_features["possible_atomic_num_list"].index(atom.GetAtomicNum())
+        ] + [allowable_features["possible_chirality_list"].index(atom.GetChiralTag())]
         atom_features_list.append(atom_feature)
     x = torch.tensor(np.array(atom_features_list), dtype=torch.long)
 
     # bonds
-    num_bond_features = 2   # bond type, bond direction
-    if len(mol.GetBonds()) > 0: # mol has bonds
+    num_bond_features = 2  # bond type, bond direction
+    if len(mol.GetBonds()) > 0:  # mol has bonds
         edges_list = []
         edge_features_list = []
         for bond in mol.GetBonds():
             i = bond.GetBeginAtomIdx()
             j = bond.GetEndAtomIdx()
-            edge_feature = [allowable_features['possible_bonds'].index(
-                bond.GetBondType())] + [allowable_features[
-                                            'possible_bond_dirs'].index(
-                bond.GetBondDir())]
+            edge_feature = [
+                allowable_features["possible_bonds"].index(bond.GetBondType())
+            ] + [allowable_features["possible_bond_dirs"].index(bond.GetBondDir())]
             edges_list.append((i, j))
             edge_features_list.append(edge_feature)
             edges_list.append((j, i))
@@ -557,9 +614,8 @@ def mol_to_graph_data_obj_simple(mol):
         edge_index = torch.tensor(np.array(edges_list).T, dtype=torch.long)
 
         # data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
-        edge_attr = torch.tensor(np.array(edge_features_list),
-                                 dtype=torch.long)
-    else:   # mol has no bonds
+        edge_attr = torch.tensor(np.array(edge_features_list), dtype=torch.long)
+    else:  # mol has no bonds
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, num_bond_features), dtype=torch.long)
 
@@ -571,7 +627,14 @@ def mol_to_graph_data_obj_simple(mol):
 # For inference
 def assemble(mol_list, next_motif_smiles):
     attach_fail = torch.zeros(len(mol_list)).bool()
-    cand_mols, cand_batch, new_atoms, cand_smiles, one_atom_attach, intersection = [], [], [], [], [], []
+    cand_mols, cand_batch, new_atoms, cand_smiles, one_atom_attach, intersection = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
     for i in range(len(mol_list)):
         next = Chem.MolFromSmiles(next_motif_smiles[i])
         cand_amap = enum_attach(mol_list[i], next)
@@ -598,8 +661,8 @@ def assemble(mol_list, next_motif_smiles):
                 new_atoms.append([v for v in amap1.values()])
                 one_atom_attach.append(amap_len)
                 intersection.append(iter_atoms)
-                valid_cand+=1
-            if valid_cand==0:
+                valid_cand += 1
+            if valid_cand == 0:
                 attach_fail[i] = True
                 cand_mols.append(mol_list[i])
                 cand_batch.append(i)
@@ -618,14 +681,18 @@ if __name__ == "__main__":
     lg = rdkit.RDLogger.logger()
     lg.setLevel(rdkit.RDLogger.CRITICAL)
 
-    smiles = ["O=C1[C@@H]2C=C[C@@H](C=CC2)C1(c1ccccc1)c1ccccc1", "O=C([O-])CC[C@@]12CCCC[C@]1(O)OC(=O)CC2",
-              "ON=C1C[C@H]2CC3(C[C@@H](C1)c1ccccc12)OCCO3",
-              "C[C@H]1CC(=O)[C@H]2[C@@]3(O)C(=O)c4cccc(O)c4[C@@H]4O[C@@]43[C@@H](O)C[C@]2(O)C1",
-              'Cc1cc(NC(=O)CSc2nnc3c4ccccc4n(C)c3n2)ccc1Br', 'CC(C)(C)c1ccc(C(=O)N[C@H]2CCN3CCCc4cccc2c43)cc1',
-              "O=c1c2ccc3c(=O)n(-c4nccs4)c(=O)c4ccc(c(=O)n1-c1nccs1)c2c34", "O=C(N1CCc2c(F)ccc(F)c2C1)C1(O)Cc2ccccc2C1"]
+    smiles = [
+        "O=C1[C@@H]2C=C[C@@H](C=CC2)C1(c1ccccc1)c1ccccc1",
+        "O=C([O-])CC[C@@]12CCCC[C@]1(O)OC(=O)CC2",
+        "ON=C1C[C@H]2CC3(C[C@@H](C1)c1ccccc12)OCCO3",
+        "C[C@H]1CC(=O)[C@H]2[C@@]3(O)C(=O)c4cccc(O)c4[C@@H]4O[C@@]43[C@@H](O)C[C@]2(O)C1",
+        "Cc1cc(NC(=O)CSc2nnc3c4ccccc4n(C)c3n2)ccc1Br",
+        "CC(C)(C)c1ccc(C(=O)N[C@H]2CCN3CCCc4cccc2c43)cc1",
+        "O=c1c2ccc3c(=O)n(-c4nccs4)c(=O)c4ccc(c(=O)n1-c1nccs1)c2c34",
+        "O=C(N1CCc2c(F)ccc(F)c2C1)C1(O)Cc2ccccc2C1",
+    ]
     mol_tree = MolTree("C")
     assert len(mol_tree.nodes) > 0
-
 
     def count():
         cnt, n = 0, 0
@@ -638,4 +705,5 @@ if __name__ == "__main__":
                 cnt += len(node.cands)
             n += len(tree.nodes)
             # print cnt * 1.0 / n
+
     count()

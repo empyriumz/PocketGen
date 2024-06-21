@@ -14,7 +14,6 @@ BOND_TYPES = {t: i for i, t in enumerate(BT.names.values())}
 BOND_NAMES = {i: t for i, t in enumerate(BT.names.keys())}
 
 
-
 def rdmol_to_data(mol, smiles=None):
     assert mol.GetNumConformers() == 1
     N = mol.GetNumAtoms()
@@ -54,13 +53,19 @@ def rdmol_to_data(mol, smiles=None):
     row, col = edge_index
     hs = (z == 1).to(torch.float32)
 
-    num_hs = scatter(hs[row], col, dim_size=N, reduce='sum').tolist()
+    num_hs = scatter(hs[row], col, dim_size=N, reduce="sum").tolist()
 
     if smiles is None:
         smiles = Chem.MolToSmiles(Chem.RemoveHs(mol))
 
-    data = Data(atom_type=z, pos=pos, edge_index=edge_index, edge_type=edge_type,
-                rdmol=copy.deepcopy(mol), smiles=smiles)
+    data = Data(
+        atom_type=z,
+        pos=pos,
+        edge_index=edge_index,
+        edge_type=edge_type,
+        rdmol=copy.deepcopy(mol),
+        smiles=smiles,
+    )
     data.nx = to_networkx(data, to_undirected=True)
 
     return data
@@ -70,7 +75,7 @@ def generated_to_xyz(data):
     ptable = Chem.GetPeriodicTable()
 
     num_atoms = data.ligand_context_element.size(0)
-    xyz = "%d\n\n" % (num_atoms, )
+    xyz = "%d\n\n" % (num_atoms,)
     for i in range(num_atoms):
         symb = ptable.GetElementSymbol(data.ligand_context_element[i].item())
         x, y, z = data.ligand_context_pos[i].clone().cpu().tolist()
@@ -97,6 +102,7 @@ def sdf_to_rdmol(sdf):
         return mol
     return None
 
+
 def generated_to_rdmol(data):
     sdf = generated_to_sdf(data)
     return sdf_to_rdmol(sdf)
@@ -109,11 +115,13 @@ def filter_rd_mol(rdmol):
 
     # 3-3 ring intersection
     for i, ring_a in enumerate(rings):
-        if len(ring_a) != 3:continue
+        if len(ring_a) != 3:
+            continue
         for j, ring_b in enumerate(rings):
-            if i <= j: continue
+            if i <= j:
+                continue
             inter = ring_a.intersection(ring_b)
-            if (len(ring_b) == 3) and (len(inter) > 0): 
+            if (len(ring_b) == 3) and (len(inter) > 0):
                 return False
 
     return True

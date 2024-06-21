@@ -2,34 +2,29 @@
 # -*- coding:utf-8 -*-
 import os
 import argparse
-from os.path import splitext, basename
-from copy import deepcopy
 from rdkit import Chem
 from rdkit.Chem.rdForceFieldHelpers import UFFOptimizeMolecule
-import numpy as np
 
-os.environ['OPENMM_CPU_THREADS'] = '4'  # prevent openmm from using all cpus available
+os.environ["OPENMM_CPU_THREADS"] = "4"  # prevent openmm from using all cpus available
 from openmm import LangevinIntegrator, Platform, CustomExternalForce
 from openmm.app import PDBFile, Simulation, ForceField, HBonds, Modeller
-from simtk.unit import kilocalories_per_mole, angstroms
+from openmm.unit import kilocalories_per_mole, angstroms, picosecond, kelvin
 from pdbfixer import PDBFixer
 
 import logging
 
-logging.getLogger('openmm').setLevel(logging.ERROR)
+logging.getLogger("openmm").setLevel(logging.ERROR)
 
 FILE_DIR = os.path.abspath(os.path.split(__file__)[0])
 
-CACHE_DIR = '.data/saved/'
+CACHE_DIR = ".data/saved/"
 
 
 def openmm_relax(pdb, out_pdb=None, excluded_chains=None, inverse_exclude=False):
-    tolerance = 2.39 * kilocalories_per_mole
-    stiffness = 10.0 * kilocalories_per_mole / (angstroms ** 2)
-
+    tolerance = 2.39 * kilocalories_per_mole / angstroms
+    stiffness = 10.0 * kilocalories_per_mole / (angstroms**2)
     if excluded_chains is None:
         excluded_chains = []
-
     if out_pdb is None:
         out_pdb = pdb
 
@@ -37,14 +32,12 @@ def openmm_relax(pdb, out_pdb=None, excluded_chains=None, inverse_exclude=False)
     fixer.findNonstandardResidues()
     fixer.replaceNonstandardResidues()
     fixer.findMissingResidues()
-    fixer.findMissingAtoms()  # [OXT]
+    fixer.findMissingAtoms()
     fixer.addMissingAtoms()
 
-    # force_field = ForceField("amber14/protein.ff14SB.xml")
-    force_field = ForceField('amber99sb.xml')
+    force_field = ForceField("amber99sb.xml")
     modeller = Modeller(fixer.topology, fixer.positions)
     modeller.addHydrogens(force_field)
-    # system = force_field.createSystem(modeller.topology)
     system = force_field.createSystem(modeller.topology, constraints=HBonds)
 
     force = CustomExternalForce("0.5 * k * ((x-x0)^2 + (y-y0)^2 + (z-z0)^2)")
@@ -54,27 +47,34 @@ def openmm_relax(pdb, out_pdb=None, excluded_chains=None, inverse_exclude=False)
 
     # add flexible atoms
     for residue in modeller.topology.residues():
-        if (not inverse_exclude and residue.chain.id in excluded_chains) or \
-                (inverse_exclude and residue.chain.id not in excluded_chains):  # antigen
+        if (not inverse_exclude and residue.chain.id in excluded_chains) or (
+            inverse_exclude and residue.chain.id not in excluded_chains
+        ):  # antigen
             for atom in residue.atoms():
                 system.setParticleMass(atom.index, 0)
 
         for atom in residue.atoms():
-            # if atom.name in ['N', 'CA', 'C', 'CB']:
-            if atom.element.name != 'hydrogen':
+            if atom.element.name != "hydrogen":
                 force.addParticle(atom.index, modeller.positions[atom.index])
 
     system.addForce(force)
-    integrator = LangevinIntegrator(0, 0.01, 0.0)
-    # platform = Platform.getPlatformByName('CPU')
-    # platform = Platform.getPlatformByName('CUDA')
+    integrator = LangevinIntegrator(0 * kelvin, 0.01 / picosecond, 0.0 * picosecond)
 
-    simulation = Simulation(modeller.topology, system, integrator)  # , platform)
+    # Set up CUDA platform
+    try:
+        platform = Platform.getPlatformByName("CUDA")
+        properties = {"CudaPrecision": "mixed", "CudaDeviceIndex": "0"}
+    except Exception:
+        print("CUDA platform not available. Falling back to CPU.")
+        platform = Platform.getPlatformByName("CPU")
+        properties = {}
+
+    simulation = Simulation(modeller.topology, system, integrator, platform, properties)
     simulation.context.setPositions(modeller.positions)
     simulation.minimizeEnergy(tolerance)
-    state = simulation.context.getState(getPositions=True, getEnergy=True)
 
-    with open(out_pdb, 'w') as fout:
+    state = simulation.context.getState(getPositions=True, getEnergy=True)
+    with open(out_pdb, "w") as fout:
         PDBFile.writeFile(simulation.topology, state.getPositions(), fout, keepIds=True)
 
     return out_pdb
@@ -89,10 +89,12 @@ def relax_sdf(sdf):
     Chem.MolToMolFile(mol, sdf)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pdb', type=str, default='./saved/3upr_C_rec.pdb')
-    parser.add_argument('--sdf', type=str, default='./saved/3upr_C_rec_3vri_1kx_lig_tt_min_0.sdf')
+    parser.add_argument("--pdb", type=str, default="./saved/3upr_C_rec.pdb")
+    parser.add_argument(
+        "--sdf", type=str, default="./saved/3upr_C_rec_3vri_1kx_lig_tt_min_0.sdf"
+    )
     args = parser.parse_args()
 
     openmm_relax(args.pdb, out_pdb=args.pdb)

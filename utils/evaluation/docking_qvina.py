@@ -11,11 +11,11 @@ from utils.reconstruct import reconstruct_from_generated
 
 def get_random_id(length=30):
     letters = string.ascii_lowercase
-    return ''.join(random.choice(letters) for i in range(length))
+    return "".join(random.choice(letters) for i in range(length))
 
 
 def load_pdb(path):
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         return f.read()
 
 
@@ -25,14 +25,18 @@ def parse_qvina_outputs(docked_sdf_path):
     for i, mol in enumerate(suppl):
         if mol is None:
             continue
-        line = mol.GetProp('REMARK').splitlines()[0].split()[2:]
-        results.append(EasyDict({
-            'rdmol': mol,
-            'mode_id': i,
-            'affinity': float(line[0]),
-            'rmsd_lb': float(line[1]),
-            'rmsd_ub': float(line[2]),
-        }))
+        line = mol.GetProp("REMARK").splitlines()[0].split()[2:]
+        results.append(
+            EasyDict(
+                {
+                    "rdmol": mol,
+                    "mode_id": i,
+                    "affinity": float(line[0]),
+                    "rmsd_lb": float(line[1]),
+                    "rmsd_ub": float(line[2]),
+                }
+            )
+        )
 
     return results
 
@@ -54,14 +58,14 @@ class BaseDockingTask(object):
 class QVinaDockingTask(BaseDockingTask):
 
     @classmethod
-    def from_generated_data(cls, data, protein_root='./data/crossdocked', **kwargs):
+    def from_generated_data(cls, data, protein_root="./data/crossdocked", **kwargs):
         # load original pdb
         protein_fn = os.path.join(
             os.path.dirname(data.ligand_filename),
-            os.path.basename(data.ligand_filename)[:10] + '.pdb'  # PDBId_Chain_rec.pdb
+            os.path.basename(data.ligand_filename)[:10] + ".pdb",  # PDBId_Chain_rec.pdb
         )
         protein_path = os.path.join(protein_root, protein_fn)
-        with open(protein_path, 'r') as f:
+        with open(protein_path, "r") as f:
             pdb_block = f.read()
         xyz = data.ligand_pos.clone().cpu().tolist()
         atomic_nums = data.ligand_element.clone().cpu().tolist()
@@ -71,47 +75,62 @@ class QVinaDockingTask(BaseDockingTask):
         return cls(pdb_block, ligand_rdmol, **kwargs)
 
     @classmethod
-    def from_generated_mol(cls, ligand_rdmol, ligand_filename, protein_root='./data/crossdocked', **kwargs):
+    def from_generated_mol(
+        cls, ligand_rdmol, ligand_filename, protein_root="./data/crossdocked", **kwargs
+    ):
         # load original pdb
         protein_fn = os.path.join(
             os.path.dirname(ligand_filename),
-            os.path.basename(ligand_filename)[:10] + '.pdb'  # PDBId_Chain_rec.pdb
+            os.path.basename(ligand_filename)[:10] + ".pdb",  # PDBId_Chain_rec.pdb
         )
         protein_path = os.path.join(protein_root, protein_fn)
-        with open(protein_path, 'r') as f:
+        with open(protein_path, "r") as f:
             pdb_block = f.read()
         return cls(pdb_block, ligand_rdmol, **kwargs)
 
     @classmethod
-    def from_original_data(cls, data, ligand_root='./data/crossdocked_pocket10', protein_root='./data/crossdocked',
-                           **kwargs):
+    def from_original_data(
+        cls,
+        data,
+        ligand_root="./data/crossdocked_pocket10",
+        protein_root="./data/crossdocked",
+        **kwargs
+    ):
         protein_fn = os.path.join(
             os.path.dirname(data.ligand_filename),
-            os.path.basename(data.ligand_filename)[:10] + '.pdb'
+            os.path.basename(data.ligand_filename)[:10] + ".pdb",
         )
         protein_path = os.path.join(protein_root, protein_fn)
-        with open(protein_path, 'r') as f:
+        with open(protein_path, "r") as f:
             pdb_block = f.read()
 
         ligand_path = os.path.join(ligand_root, data.ligand_filename)
         ligand_rdmol = next(iter(Chem.SDMolSupplier(ligand_path)))
         return cls(pdb_block, ligand_rdmol, **kwargs)
 
-    def __init__(self, pdb_block, ligand_rdmol, conda_env='adt', tmp_dir='./tmp', use_uff=True, center=None,
-                 size_factor=1.):
+    def __init__(
+        self,
+        pdb_block,
+        ligand_rdmol,
+        conda_env="adt",
+        tmp_dir="./tmp",
+        use_uff=True,
+        center=None,
+        size_factor=1.0,
+    ):
         super().__init__(pdb_block, ligand_rdmol)
         self.conda_env = conda_env
         self.tmp_dir = os.path.realpath(tmp_dir)
         os.makedirs(tmp_dir, exist_ok=True)
 
         self.task_id = get_random_id()
-        self.receptor_id = self.task_id + '_receptor'
-        self.ligand_id = self.task_id + '_ligand'
+        self.receptor_id = self.task_id + "_receptor"
+        self.ligand_id = self.task_id + "_ligand"
 
-        self.receptor_path = os.path.join(self.tmp_dir, self.receptor_id + '.pdb')
-        self.ligand_path = os.path.join(self.tmp_dir, self.ligand_id + '.sdf')
+        self.receptor_path = os.path.join(self.tmp_dir, self.receptor_id + ".pdb")
+        self.ligand_path = os.path.join(self.tmp_dir, self.ligand_id + ".sdf")
 
-        with open(self.receptor_path, 'w') as f:
+        with open(self.receptor_path, "w") as f:
             f.write(pdb_block)
 
         ligand_rdmol = Chem.AddHs(ligand_rdmol, addCoords=True)
@@ -132,7 +151,9 @@ class QVinaDockingTask(BaseDockingTask):
         if size_factor is None:
             self.size_x, self.size_y, self.size_z = 20, 20, 20
         else:
-            self.size_x, self.size_y, self.size_z = (pos.max(0) - pos.min(0)) * size_factor
+            self.size_x, self.size_y, self.size_z = (
+                pos.max(0) - pos.min(0)
+            ) * size_factor
 
         self.proc = None
         self.results = None
@@ -169,20 +190,20 @@ obabel {ligand_id}_out.pdbqt -O{ligand_id}_out.sdf -h
             center_z=self.center[2],
             size_x=self.size_x,
             size_y=self.size_y,
-            size_z=self.size_z
+            size_z=self.size_z,
         )
 
-        self.docked_sdf_path = os.path.join(self.tmp_dir, '%s_out.sdf' % self.ligand_id)
+        self.docked_sdf_path = os.path.join(self.tmp_dir, "%s_out.sdf" % self.ligand_id)
 
         self.proc = subprocess.Popen(
-            '/bin/bash',
+            "/bin/bash",
             shell=False,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
 
-        self.proc.stdin.write(commands.encode('utf-8'))
+        self.proc.stdin.write(commands.encode("utf-8"))
         self.proc.stdin.close()
 
         # return commands
@@ -192,7 +213,7 @@ obabel {ligand_id}_out.pdbqt -O{ligand_id}_out.sdf -h
         while self.get_results() is None:
             pass
         results = self.get_results()
-        print('Best affinity:', results[0]['affinity'])
+        print("Best affinity:", results[0]["affinity"])
         return results
 
     def get_results(self):
@@ -207,6 +228,6 @@ obabel {ligand_id}_out.pdbqt -O{ligand_id}_out.sdf -h
                 try:
                     self.results = parse_qvina_outputs(self.docked_sdf_path)
                 except:
-                    print('[Error] Vina output error: %s' % self.docked_sdf_path)
+                    print("[Error] Vina output error: %s" % self.docked_sdf_path)
                     return []
             return self.results

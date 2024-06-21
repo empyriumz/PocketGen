@@ -40,5 +40,5 @@ train:
 
 dataset:
   name: pl
-  path: ./data/bindingmoad/pocket_10
-  split: ./data/bindingmoad/split.pt
+  path: /host/scratch/pocketgen/bindingmoad/pocket_10
+  split: /host/scratch/pocketgen/bindingmoad/split.pt

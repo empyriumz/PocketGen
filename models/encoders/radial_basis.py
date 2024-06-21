@@ -22,8 +22,8 @@ class GaussianSmearing(torch.nn.Module):
     ):
         super().__init__()
         offset = torch.linspace(start, stop, num_gaussians)
-        self.coeff = -0.5 / (offset[1] - offset[0]).item()**2
-        self.register_buffer('offset', offset)
+        self.coeff = -0.5 / (offset[1] - offset[0]).item() ** 2
+        self.register_buffer("offset", offset)
 
     def forward(self, dist: Tensor) -> Tensor:
         dist = dist.view(-1, 1) - self.offset.view(1, -1)
@@ -51,7 +51,7 @@ class PolynomialEnvelope(torch.nn.Module):
     def forward(self, d_scaled):
         env_val = (
             1
-            + self.a * d_scaled ** self.p
+            + self.a * d_scaled**self.p
             + self.b * d_scaled ** (self.p + 1)
             + self.c * d_scaled ** (self.p + 2)
         )
@@ -70,9 +70,7 @@ class ExponentialEnvelope(torch.nn.Module):
         super().__init__()
 
     def forward(self, d_scaled):
-        env_val = torch.exp(
-            -(d_scaled ** 2) / ((1 - d_scaled) * (1 + d_scaled))
-        )
+        env_val = torch.exp(-(d_scaled**2) / ((1 - d_scaled) * (1 + d_scaled)))
         return torch.where(d_scaled < 1, env_val, torch.zeros_like(d_scaled))
 
 
@@ -94,14 +92,12 @@ class SphericalBesselBasis(torch.nn.Module):
         cutoff: float,
     ):
         super().__init__()
-        self.norm_const = math.sqrt(2 / (cutoff ** 3))
+        self.norm_const = math.sqrt(2 / (cutoff**3))
         # cutoff ** 3 to counteract dividing by d_scaled = d / cutoff
 
         # Initialize frequencies at canonical positions
         self.frequencies = torch.nn.Parameter(
-            data=torch.tensor(
-                np.pi * np.arange(1, num_radial + 1, dtype=np.float32)
-            ),
+            data=torch.tensor(np.pi * np.arange(1, num_radial + 1, dtype=np.float32)),
             requires_grad=True,
         )
 
@@ -157,9 +153,7 @@ class BernsteinBasis(torch.nn.Module):
     def forward(self, d_scaled):
         gamma = self.softplus(self.pregamma)  # constrain to positive
         exp_d = torch.exp(-gamma * d_scaled)[:, None]
-        return (
-            self.prefactor * (exp_d ** self.exp1) * ((1 - exp_d) ** self.exp2)
-        )
+        return self.prefactor * (exp_d**self.exp1) * ((1 - exp_d) ** self.exp2)
 
 
 class RadialBasis(torch.nn.Module):

@@ -38,8 +38,9 @@ def merge_config(default_cfg, override_cfg):
 
 class ESM2WithStructuralAdatper(nn.Module):
     @classmethod
-    def from_pretrained(cls, args, override_args=None, name='esm2_t33_650M_UR50D'):
+    def from_pretrained(cls, args, override_args=None, name="esm2_t33_650M_UR50D"):
         import esm
+
         pretrained_model, alphabet = esm.pretrained.load_model_and_alphabet_hub(name)
 
         pretrained_args = Cfg(
@@ -53,10 +54,12 @@ class ESM2WithStructuralAdatper(nn.Module):
 
         args.adapter_layer_indices = [-1]
         args.adapter_layer_indices = list(
-            map(lambda x: (args.num_layers + x) % args.num_layers,
-                args.adapter_layer_indices)
+            map(
+                lambda x: (args.num_layers + x) % args.num_layers,
+                args.adapter_layer_indices,
+            )
         )
-        #args.adapter_layer_indices = [6, 20, 32]
+        # args.adapter_layer_indices = [6, 20, 32]
 
         model = cls(args, deepcopy(alphabet))
         model.load_state_dict(pretrained_model.state_dict(), strict=False)
@@ -65,7 +68,7 @@ class ESM2WithStructuralAdatper(nn.Module):
 
         # freeze pretrained parameters
         for pname, param in model.named_parameters():
-            if 'adapter' not in pname:
+            if "adapter" not in pname:
                 param.requires_grad = False
         return model
 
@@ -106,10 +109,7 @@ class ESM2WithStructuralAdatper(nn.Module):
         )
 
         self.layers = nn.ModuleList(
-            [
-                self._init_layer(_)
-                for _ in range(self.num_layers)
-            ]
+            [self._init_layer(_) for _ in range(self.num_layers)]
         )
 
         self.contact_head = ContactPredictionHead(
@@ -136,7 +136,7 @@ class ESM2WithStructuralAdatper(nn.Module):
                 use_esm1b_layer_norm=True,
                 use_rotary_embeddings=True,
                 encoder_embed_dim=self.args.encoder.d_model,
-                dropout=self.args.dropout
+                dropout=self.args.dropout,
             )
         else:
             layer = TransformerLayer(
@@ -149,15 +149,29 @@ class ESM2WithStructuralAdatper(nn.Module):
             )
         return layer
 
-    def forward_layers(self, x, encoder_out, padding_mask, repr_layers=[], hidden_representations=[], need_head_weights=False, attn_weights=[]):
+    def forward_layers(
+        self,
+        x,
+        encoder_out,
+        padding_mask,
+        repr_layers=[],
+        hidden_representations=[],
+        need_head_weights=False,
+        attn_weights=[],
+    ):
         for layer_idx, layer in enumerate(self.layers):
             if layer_idx in self.args.adapter_layer_indices:
                 x, attn = layer(
-                    x, encoder_out, self_attn_padding_mask=padding_mask, need_head_weights=need_head_weights
+                    x,
+                    encoder_out,
+                    self_attn_padding_mask=padding_mask,
+                    need_head_weights=need_head_weights,
                 )
             else:
                 x, attn = layer(
-                    x, self_attn_padding_mask=padding_mask, need_head_weights=need_head_weights
+                    x,
+                    self_attn_padding_mask=padding_mask,
+                    need_head_weights=need_head_weights,
                 )
             if (layer_idx + 1) in repr_layers:
                 hidden_representations[layer_idx + 1] = x.transpose(0, 1)
@@ -167,7 +181,14 @@ class ESM2WithStructuralAdatper(nn.Module):
 
         return x, hidden_representations, attn_weights, layer_idx
 
-    def forward(self, tokens, encoder_out, repr_layers=[], need_head_weights=False, return_contacts=False):
+    def forward(
+        self,
+        tokens,
+        encoder_out,
+        repr_layers=[],
+        need_head_weights=False,
+        return_contacts=False,
+    ):
         if return_contacts:
             need_head_weights = True
 
@@ -181,7 +202,9 @@ class ESM2WithStructuralAdatper(nn.Module):
             # x: B x T x C
             mask_ratio_train = 0.15 * 0.8
             src_lengths = (~padding_mask).sum(-1)
-            mask_ratio_observed = (tokens == self.mask_idx).sum(-1).to(x.dtype) / src_lengths
+            mask_ratio_observed = (tokens == self.mask_idx).sum(-1).to(
+                x.dtype
+            ) / src_lengths
             x = x * (1 - mask_ratio_train) / (1 - mask_ratio_observed)[:, None, None]
 
         if padding_mask is not None:
@@ -214,13 +237,14 @@ class ESM2WithStructuralAdatper(nn.Module):
         #         attn_weights.append(attn.transpose(1, 0))
 
         x, hidden_representations, attn_weights, layer_idx = self.forward_layers(
-            x, encoder_out, padding_mask,
+            x,
+            encoder_out,
+            padding_mask,
             repr_layers=repr_layers,
             hidden_representations=hidden_representations,
             need_head_weights=need_head_weights,
-            attn_weights=attn_weights if need_head_weights else None
+            attn_weights=attn_weights if need_head_weights else None,
         )
-
 
         x = self.emb_layer_norm_after(x)
         x = x.transpose(0, 1)  # (T, B, E) => (B, T, E)
@@ -236,7 +260,9 @@ class ESM2WithStructuralAdatper(nn.Module):
             attentions = torch.stack(attn_weights, 1)
             if padding_mask is not None:
                 attention_mask = 1 - padding_mask.type_as(attentions)
-                attention_mask = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(2)
+                attention_mask = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(
+                    2
+                )
                 attentions = attentions * attention_mask[:, None, None, :, :]
             result["attentions"] = attentions
             if return_contacts:
@@ -271,7 +297,6 @@ class TransforerLayerWithStructralAdapter(nn.Module):
         self.dropout = dropout
         self._init_submodules(add_bias_kv, use_esm1b_layer_norm)
 
-
     def _init_submodules(self, add_bias_kv, use_esm1b_layer_norm):
         BertLayerNorm = ESM1bLayerNorm if use_esm1b_layer_norm else ESM1LayerNorm
 
@@ -301,21 +326,26 @@ class TransforerLayerWithStructralAdapter(nn.Module):
                 use_rotary_embeddings=True,
             ),
             embedding_dim=self.embed_dim,
-            dropout=self.dropout
+            dropout=self.dropout,
         )
         self.structural_adapter_ffn = NormalizedResidualBlock(
             layer=FeedForwardNetwork(
                 self.embed_dim,
-                self.embed_dim // 2, # NOTE: bottleneck FFN is important
+                self.embed_dim // 2,  # NOTE: bottleneck FFN is important
                 # self.ffn_embed_dim,
-                activation_dropout=self.dropout
+                activation_dropout=self.dropout,
             ),
             embedding_dim=self.embed_dim,
-            dropout=self.dropout
+            dropout=self.dropout,
         )
 
     def forward(
-        self, x, encoder_out, self_attn_mask=None, self_attn_padding_mask=None, need_head_weights=False
+        self,
+        x,
+        encoder_out,
+        self_attn_mask=None,
+        self_attn_padding_mask=None,
+        need_head_weights=False,
     ):
         residual = x
         x = self.self_attn_layer_norm(x)
@@ -338,11 +368,16 @@ class TransforerLayerWithStructralAdapter(nn.Module):
         x = self.fc2(x)
         x = residual + x
 
-        x = x + self.forward_adapter(x, encoder_out, attn_mask=self_attn_mask, attn_padding_mask=self_attn_padding_mask)
+        x = x + self.forward_adapter(
+            x,
+            encoder_out,
+            attn_mask=self_attn_mask,
+            attn_padding_mask=self_attn_padding_mask,
+        )
         return x, attn
 
     def forward_adapter(self, x, encoder_out, attn_mask, attn_padding_mask):
-        encoder_feats = encoder_out['feats']
+        encoder_feats = encoder_out["feats"]
         encoder_feats = encoder_feats.transpose(0, 1)
 
         x = self.structural_adapter_attn(
@@ -351,7 +386,7 @@ class TransforerLayerWithStructralAdapter(nn.Module):
             value=encoder_feats,
             key_padding_mask=attn_padding_mask,
             attn_mask=attn_mask,
-            need_weights=False
+            need_weights=False,
         )[0]
 
         x = self.structural_adapter_ffn(x)

@@ -8,9 +8,18 @@ from torch_scatter import scatter_sum, scatter_min, scatter_mean
 
 def print_cuda_memory():
     print()
-    print("torch.cuda.memory_allocated: %fGB" % (torch.cuda.memory_allocated(0) / 1024 / 1024 / 1024))
-    print("torch.cuda.memory_reserved: %fGB" % (torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024))
-    print("torch.cuda.max_memory_reserved: %fGB" % (torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024))
+    print(
+        "torch.cuda.memory_allocated: %fGB"
+        % (torch.cuda.memory_allocated(0) / 1024 / 1024 / 1024)
+    )
+    print(
+        "torch.cuda.memory_reserved: %fGB"
+        % (torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024)
+    )
+    print(
+        "torch.cuda.max_memory_reserved: %fGB"
+        % (torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024)
+    )
 
 
 def count_parameters(model):
@@ -43,14 +52,19 @@ def stable_norm(input, *args, **kwargs):
 
 
 def graph_to_batch(tensor, batch_id, padding_value=0, mask_is_pad=True):
-    '''
+    """
     :param tensor: [N, D1, D2, ...]
     :param batch_id: [N]
     :param mask_is_pad: 1 in the mask indicates padding if set to True
-    '''
+    """
     lengths = scatter_sum(torch.ones_like(batch_id), batch_id)  # [bs]
     bs, max_n = lengths.shape[0], torch.max(lengths)
-    batch = torch.ones((bs, max_n, *tensor.shape[1:]), dtype=tensor.dtype, device=tensor.device) * padding_value
+    batch = (
+        torch.ones(
+            (bs, max_n, *tensor.shape[1:]), dtype=tensor.dtype, device=tensor.device
+        )
+        * padding_value
+    )
     # generate pad mask: 1 for pad and 0 for data
     pad_mask = torch.zeros((bs, max_n + 1), dtype=torch.long, device=tensor.device)
     pad_mask[(torch.arange(bs, device=tensor.device), lengths)] = 1
@@ -63,10 +77,10 @@ def graph_to_batch(tensor, batch_id, padding_value=0, mask_is_pad=True):
 
 
 def _knn_edges(dist, src_dst, k_neighbors, batch_info):
-    '''
+    """
     :param dist: [Ef], given distance of edges
     :param src_dst: [Ef, 2], full possible edges represented in (src, dst)
-    '''
+    """
     offsets, batch_id, max_n, gni2lni = batch_info
 
     k_neighbors = min(max_n, k_neighbors)
@@ -75,10 +89,14 @@ def _knn_edges(dist, src_dst, k_neighbors, batch_info):
     N = batch_id.shape[0]
     src_dst = src_dst.transpose(0, 1)  # [2, Ef]
 
-    dist_mat = torch.ones(N, max_n, device=dist.device, dtype=dist.dtype) * BIGINT  # [N, max_n]
+    dist_mat = (
+        torch.ones(N, max_n, device=dist.device, dtype=dist.dtype) * BIGINT
+    )  # [N, max_n]
     dist_mat[(src_dst[0], gni2lni[src_dst[1]])] = dist
     del dist
-    dist_neighbors, dst = torch.topk(dist_mat, k_neighbors, dim=-1, largest=False)  # [N, topk]
+    dist_neighbors, dst = torch.topk(
+        dist_mat, k_neighbors, dim=-1, largest=False
+    )  # [N, topk]
 
     src = torch.arange(0, N, device=dst.device).unsqueeze(-1).repeat(1, k_neighbors)
     src, dst = src.flatten(), dst.flatten()
@@ -95,10 +113,10 @@ def _knn_edges(dist, src_dst, k_neighbors, batch_info):
 
 
 def _radial_edges(dist, src_dst, dist_cut_off):
-    '''
+    """
     :param dist: [Ef], given distance of edges
     :param src_dst: [Ef, 2], full possible edges represented in (src, dst)
-    '''
+    """
     is_valid = dist < dist_cut_off
     src_dst = src_dst[is_valid]
     src_dst = src_dst.transpose(0, 1)  # [2, Ef]
@@ -106,14 +124,14 @@ def _radial_edges(dist, src_dst, dist_cut_off):
 
 
 class BatchEdgeConstructor:
-    '''
+    """
     Construct intra-segment edges (intra_edges) and inter-segment edges (inter_edges) with O(Nn) complexity,
     where n is the largest number of nodes of one graph in the batch.
     Additionally consider global nodes:
         global nodes will connect to all nodes in its segment (global_normal_edges)
         global nodes will connect to each other regardless of the segments they are in (global_global_edges)
     Additionally consider edges between adjacent nodes in the sequence in the same segment (seq_edges)
-    '''
+    """
 
     def __init__(self, global_node_id_vocab=[], delete_self_loop=True) -> None:
         self.global_node_id_vocab = copy(global_node_id_vocab)
@@ -163,7 +181,9 @@ class BatchEdgeConstructor:
 
         # not global edges
         if len(self.global_node_id_vocab):
-            is_global = sequential_or(*[S == global_node_id for global_node_id in self.global_node_id_vocab])  # [N]
+            is_global = sequential_or(
+                *[S == global_node_id for global_node_id in self.global_node_id_vocab]
+            )  # [N]
         else:
             is_global = torch.zeros_like(S, dtype=torch.bool)
         row_global, col_global = is_global[row], is_global[col]
@@ -182,24 +202,32 @@ class BatchEdgeConstructor:
     def _construct_intra_edges(self, S, batch_id, segment_ids, **kwargs):
         row, col = self.row, self.col
         # all possible ctx edges: same seg, not global
-        select_edges = torch.logical_and(self.row_seg == self.col_seg, self.not_global_edges)
+        select_edges = torch.logical_and(
+            self.row_seg == self.col_seg, self.not_global_edges
+        )
         intra_all_row, intra_all_col = row[select_edges], col[select_edges]
         return torch.stack([intra_all_row, intra_all_col])
 
     def _construct_inter_edges(self, S, batch_id, segment_ids, **kwargs):
         row, col = self.row, self.col
         # all possible inter edges: not same seg, not global
-        select_edges = torch.logical_and(self.row_seg != self.col_seg, self.not_global_edges)
+        select_edges = torch.logical_and(
+            self.row_seg != self.col_seg, self.not_global_edges
+        )
         inter_all_row, inter_all_col = row[select_edges], col[select_edges]
         return torch.stack([inter_all_row, inter_all_col])
 
     def _construct_global_edges(self, S, batch_id, segment_ids, **kwargs):
         row, col = self.row, self.col
         # edges between global and normal nodes
-        select_edges = torch.logical_and(self.row_seg == self.col_seg, torch.logical_not(self.not_global_edges))
+        select_edges = torch.logical_and(
+            self.row_seg == self.col_seg, torch.logical_not(self.not_global_edges)
+        )
         global_normal = torch.stack([row[select_edges], col[select_edges]])  # [2, nE]
         # edges between global and global nodes
-        select_edges = torch.logical_and(self.row_global, self.col_global)  # self-loop has been deleted
+        select_edges = torch.logical_and(
+            self.row_global, self.col_global
+        )  # self-loop has been deleted
         global_global = torch.stack([row[select_edges], col[select_edges]])  # [2, nE]
         return global_normal, global_global
 
@@ -207,8 +235,10 @@ class BatchEdgeConstructor:
         row, col = self.row, self.col
         # add additional edge to neighbors in 1D sequence (except epitope)
         select_edges = sequential_and(
-            torch.logical_or((row - col) == 1, (row - col) == -1),  # adjacent in the graph order
-            self.not_global_edges  # not global edges (also ensure the edges are in the same segment)
+            torch.logical_or(
+                (row - col) == 1, (row - col) == -1
+            ),  # adjacent in the graph order
+            self.not_global_edges,  # not global edges (also ensure the edges are in the same segment)
             # self.row_seg != self.ag_seg_id  # not epitope
         )
         seq_adj = torch.stack([row[select_edges], col[select_edges]])  # [2, nE]
@@ -216,9 +246,9 @@ class BatchEdgeConstructor:
 
     @torch.no_grad()
     def __call__(self, S, batch_id, segment_ids, **kwargs):
-        '''
+        """
         Memory efficient with complexity of O(Nn) where n is the largest number of nodes in the batch
-        '''
+        """
         # prepare inputs
         self._prepare(S, batch_id, segment_ids)
 
@@ -229,14 +259,22 @@ class BatchEdgeConstructor:
         inter_edges = self._construct_inter_edges(S, batch_id, segment_ids, **kwargs)
 
         # edges between global nodes and normal/global nodes
-        global_normal_edges, global_global_edges = self._construct_global_edges(S, batch_id, segment_ids, **kwargs)
+        global_normal_edges, global_global_edges = self._construct_global_edges(
+            S, batch_id, segment_ids, **kwargs
+        )
 
         # edges on the 1D sequence
         seq_edges = self._construct_seq_edges(S, batch_id, segment_ids, **kwargs)
 
         self._reset_buffer()
 
-        return intra_edges, inter_edges, global_normal_edges, global_global_edges, seq_edges
+        return (
+            intra_edges,
+            inter_edges,
+            global_normal_edges,
+            global_global_edges,
+            seq_edges,
+        )
 
 
 class SinusoidalPositionEmbedding(nn.Module):
@@ -253,74 +291,105 @@ class SinusoidalPositionEmbedding(nn.Module):
         position_ids = position_ids[None]  # [1, N]
         indices = torch.arange(self.output_dim // 2, device=device, dtype=torch.float)
         indices = torch.pow(10000.0, -2 * indices / self.output_dim)
-        embeddings = torch.einsum('bn,d->bnd', position_ids, indices)
+        embeddings = torch.einsum("bn,d->bnd", position_ids, indices)
         embeddings = torch.stack([torch.sin(embeddings), torch.cos(embeddings)], dim=-1)
         embeddings = embeddings.reshape(-1, self.output_dim)
         return embeddings
 
 
 def _unit_edges_from_block_edges(unit_block_id, block_src_dst, Z=None, k=None):
-    '''
+    """
     :param unit_block_id [N], id of block of each unit. Assume X is sorted so that block_id starts from 0 to Nb - 1
     :param block_src_dst: [Eb, 2], all edges (block level), represented in (src, dst)
-    '''
-    block_n_units = scatter_sum(torch.ones_like(unit_block_id), unit_block_id)  # [Nb], number of units in each block
-    block_offsets = F.pad(torch.cumsum(block_n_units[:-1], dim=0), (1, 0), value=0)  # [Nb]
-    edge_n_units = block_n_units[block_src_dst]  # [Eb, 2], number of units at two end of the block edges
-    edge_n_pairs = edge_n_units[:, 0] * edge_n_units[:, 1]  # [Eb], number of unit-pairs in each edge
+    """
+    block_n_units = scatter_sum(
+        torch.ones_like(unit_block_id), unit_block_id
+    )  # [Nb], number of units in each block
+    block_offsets = F.pad(
+        torch.cumsum(block_n_units[:-1], dim=0), (1, 0), value=0
+    )  # [Nb]
+    edge_n_units = block_n_units[
+        block_src_dst
+    ]  # [Eb, 2], number of units at two end of the block edges
+    edge_n_pairs = (
+        edge_n_units[:, 0] * edge_n_units[:, 1]
+    )  # [Eb], number of unit-pairs in each edge
 
     # block edge id for unit pairs
-    edge_id = torch.zeros(edge_n_pairs.sum(), dtype=torch.long, device=edge_n_pairs.device)  # [Eu], which edge each unit pair belongs to
-    edge_start_index = torch.cumsum(edge_n_pairs, dim=0)[:-1]  # [Eb - 1], start index of each edge (without the first edge as it starts with 0) in unit_src_dst
+    edge_id = torch.zeros(
+        edge_n_pairs.sum(), dtype=torch.long, device=edge_n_pairs.device
+    )  # [Eu], which edge each unit pair belongs to
+    edge_start_index = torch.cumsum(edge_n_pairs, dim=0)[
+        :-1
+    ]  # [Eb - 1], start index of each edge (without the first edge as it starts with 0) in unit_src_dst
     edge_id[edge_start_index] = 1
-    edge_id = torch.cumsum(edge_id, dim=0)  # [Eu], which edge each unit pair belongs to, start from 0, end with Eb - 1
+    edge_id = torch.cumsum(
+        edge_id, dim=0
+    )  # [Eu], which edge each unit pair belongs to, start from 0, end with Eb - 1
 
     # get unit-pair src-dst indexes
     unit_src_dst = torch.ones_like(edge_id)  # [Eu]
-    unit_src_dst[edge_start_index] = -(edge_n_pairs[:-1] - 1)  # [Eu], e.g. [1,1,1,-2,1,1,1,1,-4,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
+    unit_src_dst[edge_start_index] = -(
+        edge_n_pairs[:-1] - 1
+    )  # [Eu], e.g. [1,1,1,-2,1,1,1,1,-4,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
     del edge_start_index  # release memory
     if len(unit_src_dst) > 0:
-        unit_src_dst[0] = 0 # [Eu], e.g. [0,1,1,-2,1,1,1,1,-4,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
-    unit_src_dst = torch.cumsum(unit_src_dst, dim=0)  # [Eu], e.g. [0,1,2,0,1,2,3,4,0,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
-    unit_dst_n = edge_n_units[:, 1][edge_id]  # [Eu], each block edge has m*n unit pairs, here n refers to the number of units in the dst block
+        unit_src_dst[0] = (
+            0  # [Eu], e.g. [0,1,1,-2,1,1,1,1,-4,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
+        )
+    unit_src_dst = torch.cumsum(
+        unit_src_dst, dim=0
+    )  # [Eu], e.g. [0,1,2,0,1,2,3,4,0,1], corresponding to edge id [0,0,0,1,1,1,1,1,2,2]
+    unit_dst_n = edge_n_units[:, 1][
+        edge_id
+    ]  # [Eu], each block edge has m*n unit pairs, here n refers to the number of units in the dst block
     # turn 1D indexes to 2D indexes (TODO: this block is memory-intensive)
-    unit_src = torch.div(unit_src_dst, unit_dst_n, rounding_mode='floor') + block_offsets[block_src_dst[:, 0][edge_id]] # [Eu]
-    unit_dst = torch.remainder(unit_src_dst, unit_dst_n)  # [Eu], e.g. [0,1,2,0,0,0,0,0,0,1] for block-pair shape 1*3, 5*1, 1*2
+    unit_src = (
+        torch.div(unit_src_dst, unit_dst_n, rounding_mode="floor")
+        + block_offsets[block_src_dst[:, 0][edge_id]]
+    )  # [Eu]
+    unit_dst = torch.remainder(
+        unit_src_dst, unit_dst_n
+    )  # [Eu], e.g. [0,1,2,0,0,0,0,0,0,1] for block-pair shape 1*3, 5*1, 1*2
     unit_dist_local = unit_dst
     # release some memory
     del unit_dst_n, unit_src_dst  # release memory
-    unit_edge_src_start = (unit_dst == 0)
+    unit_edge_src_start = unit_dst == 0
     unit_dst = unit_dst + block_offsets[block_src_dst[:, 1][edge_id]]  # [Eu]
-    del block_offsets, block_src_dst # release memory
+    del block_offsets, block_src_dst  # release memory
     unit_edge_src_id = unit_edge_src_start.long()
     if len(unit_edge_src_id) > 1:
         unit_edge_src_id[0] = 0
-    unit_edge_src_id = torch.cumsum(unit_edge_src_id, dim=0)  # [Eu], e.g. [0,0,0,1,2,3,4,5,6,6] for the above example
+    unit_edge_src_id = torch.cumsum(
+        unit_edge_src_id, dim=0
+    )  # [Eu], e.g. [0,0,0,1,2,3,4,5,6,6] for the above example
 
     if k is None:
         return (unit_src, unit_dst), (edge_id, unit_edge_src_start, unit_edge_src_id)
 
     # sparsify, each atom is connected to the nearest k atoms in the other block in the same block edge
 
-    D = torch.norm(Z[unit_src] - Z[unit_dst], dim=-1) # [Eu, n_channel]
-    D = D.sum(dim=-1) # [Eu]
-    
+    D = torch.norm(Z[unit_src] - Z[unit_dst], dim=-1)  # [Eu, n_channel]
+    D = D.sum(dim=-1)  # [Eu]
+
     max_n = torch.max(scatter_sum(torch.ones_like(unit_edge_src_id), unit_edge_src_id))
     k = min(k, max_n)
 
     BIGINT = 1e10  # assign a large distance to invalid edges
     N = unit_edge_src_id.max() + 1
     # src_dst = src_dst.transpose(0, 1)  # [2, Ef]
-    dist = torch.norm(Z[unit_src] - Z[unit_dst], dim=-1).sum(-1) # [Eu]
+    dist = torch.norm(Z[unit_src] - Z[unit_dst], dim=-1).sum(-1)  # [Eu]
 
-    dist_mat = torch.ones(N, max_n, device=dist.device, dtype=dist.dtype) * BIGINT  # [N, max_n]
+    dist_mat = (
+        torch.ones(N, max_n, device=dist.device, dtype=dist.dtype) * BIGINT
+    )  # [N, max_n]
     dist_mat[(unit_edge_src_id, unit_dist_local)] = dist
     del dist
     dist_neighbors, dst = torch.topk(dist_mat, k, dim=-1, largest=False)  # [N, topk]
     del dist_mat
 
     src = torch.arange(0, N, device=dst.device).unsqueeze(-1).repeat(1, k)
-    unit_edge_src_start = torch.zeros_like(src).bool() # [N, k]
+    unit_edge_src_start = torch.zeros_like(src).bool()  # [N, k]
     unit_edge_src_start[:, 0] = True
     src, dst = src.flatten(), dst.flatten()
     unit_edge_src_start = unit_edge_src_start.flatten()
@@ -340,12 +409,12 @@ def _unit_edges_from_block_edges(unit_block_id, block_src_dst, Z=None, k=None):
     edge_id = mat[(src, dst)]
 
     unit_edge_src_id = src
-    
+
     return (unit_src, unit_dst), (edge_id, unit_edge_src_start, unit_edge_src_id)
 
 
 def _block_edge_dist(X, block_id, src_dst):
-    '''
+    """
     Several units constitute a block.
     This function calculates the distance of edges between blocks
     The distance between two blocks are defined as the minimum distance of unit-pairs between them.
@@ -355,8 +424,10 @@ def _block_edge_dist(X, block_id, src_dst):
     :param X: [N, c, 3], coordinates, each unit has c channels. Assume the units in the same block are aranged sequentially
     :param block_id [N], id of block of each unit. Assume X is sorted so that block_id starts from 0 to Nb - 1
     :param src_dst: [Eb, 2], all edges (block level) that needs distance calculation, represented in (src, dst)
-    '''
-    (unit_src, unit_dst), (edge_id, _, _) = _unit_edges_from_block_edges(block_id, src_dst)
+    """
+    (unit_src, unit_dst), (edge_id, _, _) = _unit_edges_from_block_edges(
+        block_id, src_dst
+    )
     # calculate unit-pair distances
     src_x, dst_x = X[unit_src], X[unit_dst]  # [Eu, k, 3]
     dist = torch.norm(src_x - dst_x, dim=-1)  # [Eu, k]
@@ -367,33 +438,45 @@ def _block_edge_dist(X, block_id, src_dst):
 
 
 class KNNBatchEdgeConstructor(BatchEdgeConstructor):
-    def __init__(self, k_neighbors, global_message_passing=True, global_node_id_vocab=[], delete_self_loop=True) -> None:
+    def __init__(
+        self,
+        k_neighbors,
+        global_message_passing=True,
+        global_node_id_vocab=[],
+        delete_self_loop=True,
+    ) -> None:
         super().__init__(global_node_id_vocab, delete_self_loop)
         self.k_neighbors = k_neighbors
         self.global_message_passing = global_message_passing
 
     def _construct_intra_edges(self, S, batch_id, segment_ids, **kwargs):
         all_intra_edges = super()._construct_intra_edges(S, batch_id, segment_ids)
-        X, block_id = kwargs['X'], kwargs['block_id']
+        X, block_id = kwargs["X"], kwargs["block_id"]
         # knn
         src_dst = all_intra_edges.T
         dist = _block_edge_dist(X, block_id, src_dst)
         intra_edges = _knn_edges(
-            dist, src_dst, self.k_neighbors,
-            (self.offsets, batch_id, self.max_n, self.gni2lni))
+            dist,
+            src_dst,
+            self.k_neighbors,
+            (self.offsets, batch_id, self.max_n, self.gni2lni),
+        )
         return intra_edges
-    
+
     def _construct_inter_edges(self, S, batch_id, segment_ids, **kwargs):
         all_inter_edges = super()._construct_inter_edges(S, batch_id, segment_ids)
-        X, block_id = kwargs['X'], kwargs['block_id']
+        X, block_id = kwargs["X"], kwargs["block_id"]
         # knn
         src_dst = all_inter_edges.T
         dist = _block_edge_dist(X, block_id, src_dst)
         inter_edges = _knn_edges(
-            dist, src_dst, self.k_neighbors,
-            (self.offsets, batch_id, self.max_n, self.gni2lni))
+            dist,
+            src_dst,
+            self.k_neighbors,
+            (self.offsets, batch_id, self.max_n, self.gni2lni),
+        )
         return inter_edges
-    
+
     def _construct_global_edges(self, S, batch_id, segment_ids, **kwargs):
         if self.global_message_passing:
             return super()._construct_global_edges(S, batch_id, segment_ids, **kwargs)
@@ -406,24 +489,32 @@ class KNNBatchEdgeConstructor(BatchEdgeConstructor):
 
 # embedding of blocks (for proteins, it is residue).
 class BlockEmbedding(nn.Module):
-    '''
+    """
     [atom embedding + block embedding + atom position embedding]
-    '''
-    def __init__(self, num_block_type, num_atom_type, num_atom_position, embed_size, no_block_embedding=False):
+    """
+
+    def __init__(
+        self,
+        num_block_type,
+        num_atom_type,
+        num_atom_position,
+        embed_size,
+        no_block_embedding=False,
+    ):
         super().__init__()
         if not no_block_embedding:
             self.block_embedding = nn.Embedding(num_block_type, embed_size)
         self.no_block_embedding = no_block_embedding
         self.atom_embedding = nn.Embedding(num_atom_type, embed_size)
         self.position_embedding = nn.Embedding(num_atom_position, embed_size)
-    
+
     def forward(self, B, A, atom_positions, block_id):
-        '''
+        """
         :param B: [Nb], block (residue) types
         :param A: [Nu], unit (atom) types
         :param atom_positions: [Nu], unit (atom) position encoding
         :param block_id: [Nu], block id of each unit
-        '''
+        """
         atom_embed = self.atom_embedding(A) + self.position_embedding(atom_positions)
         if self.no_block_embedding:
             return atom_embed
@@ -431,11 +522,11 @@ class BlockEmbedding(nn.Module):
         return atom_embed + block_embed
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # test block edge distance
     X = torch.randn(12, 2, 3)
-    block_id = torch.tensor([0,0,1,1,1,1,2,2,2,3,4,4], dtype=torch.long)
-    src_dst = torch.tensor([[0, 1], [2,3], [1,3], [2,4]], dtype=torch.long)
+    block_id = torch.tensor([0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 4, 4], dtype=torch.long)
+    src_dst = torch.tensor([[0, 1], [2, 3], [1, 3], [2, 4]], dtype=torch.long)
 
     gt = []
     for src, dst in src_dst:

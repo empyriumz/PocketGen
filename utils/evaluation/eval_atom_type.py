@@ -30,6 +30,8 @@ def eval_atom_type_distribution(pred_counter: Counter):
         pred_atom_distribution[k] = pred_counter[k] / total_num_atoms
     # print('pred atom distribution: ', pred_atom_distribution)
     # print('ref  atom distribution: ', ATOM_TYPE_DISTRIBUTION)
-    js = sci_spatial.distance.jensenshannon(np.array(list(ATOM_TYPE_DISTRIBUTION.values())),
-                                            np.array(list(pred_atom_distribution.values())))
+    js = sci_spatial.distance.jensenshannon(
+        np.array(list(ATOM_TYPE_DISTRIBUTION.values())),
+        np.array(list(pred_atom_distribution.values())),
+    )
     return js

@@ -125,21 +125,36 @@ def kabsch_torch(A, B, requires_grad=False):
         assert not torch.isnan(H).any()
         U, S, Vt = torch.linalg.svd(H)
         num_it = 0
-        while torch.min(S) < 1e-3 or torch.min(
-                torch.abs((S ** 2).view(1, 3) - (S ** 2).view(3, 1) + torch.eye(3).to(S.device))) < 1e-2:
+        while (
+            torch.min(S) < 1e-3
+            or torch.min(
+                torch.abs(
+                    (S**2).view(1, 3) - (S**2).view(3, 1) + torch.eye(3).to(S.device)
+                )
+            )
+            < 1e-2
+        ):
             H = H + torch.rand(3, 3).to(H.device) * torch.eye(3).to(H.device)
             U, S, Vt = torch.linalg.svd(H)
             num_it += 1
 
             if num_it > 10:
-                raise RuntimeError('SVD consistently numerically unstable! Exitting ... ')
+                raise RuntimeError(
+                    "SVD consistently numerically unstable! Exitting ... "
+                )
     else:
         U, S, Vt = torch.linalg.svd(H)
     V = Vt.T
     # rms
     d = (torch.linalg.det(U) * torch.linalg.det(V)) < 0.0
     if d:
-        SS = torch.diag(torch.tensor([1. for _ in range(len(U) - 1)] + [-1.], device=U.device, dtype=U.dtype))
+        SS = torch.diag(
+            torch.tensor(
+                [1.0 for _ in range(len(U) - 1)] + [-1.0],
+                device=U.device,
+                dtype=U.dtype,
+            )
+        )
         U = U @ SS
         # U[:, -1] = -U[:, -1]
     # Rotation matrix
@@ -151,10 +166,10 @@ def kabsch_torch(A, B, requires_grad=False):
 
 
 def batch_kabsch_torch(A, B):
-    '''
+    """
     A: [B, N, 3]
     B: [B, N, 3]
-    '''
+    """
     a_mean = A.mean(dim=1, keepdims=True)
     b_mean = B.mean(dim=1, keepdims=True)
     A_c = A - a_mean
@@ -165,8 +180,14 @@ def batch_kabsch_torch(A, B):
     V = Vt.transpose(1, 2)
     # rms
     d = ((torch.linalg.det(U) * torch.linalg.det(V)) < 0.0).long()  # [B]
-    nSS = torch.diag(torch.tensor([1. for _ in range(len(U))], device=U.device, dtype=U.dtype))
-    SS = torch.diag(torch.tensor([1. for _ in range(len(U) - 1)] + [-1.], device=U.device, dtype=U.dtype))
+    nSS = torch.diag(
+        torch.tensor([1.0 for _ in range(len(U))], device=U.device, dtype=U.dtype)
+    )
+    SS = torch.diag(
+        torch.tensor(
+            [1.0 for _ in range(len(U) - 1)] + [-1.0], device=U.device, dtype=U.dtype
+        )
+    )
     bSS = torch.stack([nSS, SS], dim=0)[d]  # [B, 3, 3]
     U = torch.bmm(U, bSS)
     # Rotation matrix

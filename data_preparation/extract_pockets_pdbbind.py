@@ -17,8 +17,8 @@ from utils.protein_ligand import PDBProtein, parse_sdf_file
 
 
 def load_item(item, path):
-    pdb_path = os.path.join(path, os.path.join(item, item + '_protein.pdb'))
-    with open(pdb_path, 'r') as f:
+    pdb_path = os.path.join(path, os.path.join(item, item + "_protein.pdb"))
+    with open(pdb_path, "r") as f:
         pdb_block = f.read()
     return pdb_block
 
@@ -50,73 +50,87 @@ def process_name(name):
 
         removeH(full_path)
     except Exception as e:
-        print('Exception occurred for:', name)
-        print('Error message:', e)
+        print("Exception occurred for:", name)
+        print("Error message:", e)
 
 
 def process_item(item, args):
-    #try:
-    ligand_fn = os.path.join(item, item + '_ligand.sdf')
-    ligand_path = os.path.join(args.source, os.path.join(item, item + '_ligand.sdf'))
-    protein_path = os.path.join(args.source, os.path.join(item, item + '_protein.pdb'))
+    # try:
+    ligand_fn = os.path.join(item, item + "_ligand.sdf")
+    ligand_path = os.path.join(args.source, os.path.join(item, item + "_ligand.sdf"))
+    protein_path = os.path.join(args.source, os.path.join(item, item + "_protein.pdb"))
 
-    protein_fn = os.path.join(item, item + '_protein.pdb')
+    protein_fn = os.path.join(item, item + "_protein.pdb")
     pdb_block = load_item(item, args.source)
     protein = PDBProtein(pdb_block)
-    seq = ''.join(protein.to_dict_residue()['seq'])
+    seq = "".join(protein.to_dict_residue()["seq"])
     ligand = parse_sdf_file(ligand_path)
-    r10_idx, r10_residues = protein.query_residues_ligand(ligand, args.radius, selected_residue=None,
-                                                          return_mask=False)
+    r10_idx, r10_residues = protein.query_residues_ligand(
+        ligand, args.radius, selected_residue=None, return_mask=False
+    )
     assert len(r10_idx) == len(r10_residues)
 
     pdb_block_pocket = protein.residues_to_pdb_block(r10_residues)
 
-    full_seq_idx, _ = protein.query_residues_ligand(ligand, radius=3.5, selected_residue=r10_residues, return_mask=False)
+    full_seq_idx, _ = protein.query_residues_ligand(
+        ligand, radius=3.5, selected_residue=r10_residues, return_mask=False
+    )
 
-    pocket_fn = os.path.join(item, item + '_pocket.pdb')
+    pocket_fn = os.path.join(item, item + "_pocket.pdb")
     pocket_dest = os.path.join(args.source, pocket_fn)
 
-    with open(pocket_dest, 'w') as f:
+    with open(pocket_dest, "w") as f:
         f.write(pdb_block_pocket)
-    with open(pocket_dest, 'r') as f:
+    with open(pocket_dest, "r") as f:
         pdb_block = f.read()
     pocket = PDBProtein(pdb_block)
     _, protein_edit_residue = pocket.query_residues_ligand(ligand)
 
-    return pocket_fn, ligand_fn, protein_fn, protein_edit_residue, seq, full_seq_idx, r10_idx  # item[0]: original protein filename; item[2]: rmsd.
-    '''
+    return (
+        pocket_fn,
+        ligand_fn,
+        protein_fn,
+        protein_edit_residue,
+        seq,
+        full_seq_idx,
+        r10_idx,
+    )  # item[0]: original protein filename; item[2]: rmsd.
+    """
     except Exception:
         print('Exception occurred.', item)
         return None
         #return None, item, item, 0, None, None, None
-    '''
+    """
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--source', type=str, default='/n/holyscratch01/mzitnik_lab/zaixizhang/pdbbind/v2020-other-PL')
-    parser.add_argument('--radius', type=int, default=10)
-    parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="/n/holyscratch01/mzitnik_lab/zaixizhang/pdbbind/v2020-other-PL",
+    )
+    parser.add_argument("--radius", type=int, default=10)
+    parser.add_argument("--num_workers", type=int, default=16)
     args = parser.parse_args()
 
-    with open(os.path.join(args.source, 'index.pkl'), 'rb') as f:
+    with open(os.path.join(args.source, "index.pkl"), "rb") as f:
         index = pickle.load(f)
 
-    #with mp.Pool(args.num_workers) as pool:
-        #list(tqdm(pool.imap_unordered(partial(process_item, args=args), index), total=len(index)))
+    # with mp.Pool(args.num_workers) as pool:
+    # list(tqdm(pool.imap_unordered(partial(process_item, args=args), index), total=len(index)))
 
     pool = mp.Pool(args.num_workers)
     index_pocket = []
-    for item_pocket in tqdm(pool.imap_unordered(partial(process_item, args=args), index), total=len(index)):
-        if item_pocket[0] and item_pocket[4] != '':
+    for item_pocket in tqdm(
+        pool.imap_unordered(partial(process_item, args=args), index), total=len(index)
+    ):
+        if item_pocket[0] and item_pocket[4] != "":
             index_pocket.append(item_pocket)
     pool.close()
 
-
-    index_path = os.path.join(args.source, 'index_seq.pkl')
-    with open(index_path, 'wb') as f:
+    index_path = os.path.join(args.source, "index_seq.pkl")
+    with open(index_path, "wb") as f:
         pickle.dump(index_pocket, f)
 
-    print('Done. %d protein-ligand pairs in total.' % len(index_pocket))
-
+    print("Done. %d protein-ligand pairs in total." % len(index_pocket))

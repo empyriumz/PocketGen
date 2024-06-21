@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.append("..")
 import rdkit
 import rdkit.Chem as Chem
@@ -14,12 +15,13 @@ if __name__ == "__main__":
     cnt = 0
     edit = 0
     num_res = 0
-    index_path = '/data/zaixi/Pocket_Design/data/crossdocked_pocket10/index.pkl'
-    raw_path = '/data/zaixi/Pocket_Design/data/crossdocked_pocket10'
-    with open(index_path, 'rb') as f:
+    index_path = "/data/zaixi/Pocket_Design/data/crossdocked_pocket10/index.pkl"
+    raw_path = "/data/zaixi/Pocket_Design/data/crossdocked_pocket10"
+    with open(index_path, "rb") as f:
         index = pickle.load(f)
     for i, (pocket_fn, ligand_fn, _, rmsd_str) in enumerate(tqdm(index[20000:21000])):
-        if pocket_fn is None: continue
+        if pocket_fn is None:
+            continue
         try:
             pdb_data = PDBProtein(os.path.join(raw_path, pocket_fn))
             pocket_dict = pdb_data.to_dict_atom()
@@ -28,14 +30,17 @@ if __name__ == "__main__":
             mask = pdb_data.query_residues_ligand(ligand_dict)
             for k, residue in enumerate(pdb_data.residues):
                 if mask[k]:
-                    assert len(residue['atoms']) == NUM_ATOMS[pdb_data.AA_NAME_NUMBER[residue['name']]]
+                    assert (
+                        len(residue["atoms"])
+                        == NUM_ATOMS[pdb_data.AA_NAME_NUMBER[residue["name"]]]
+                    )
             edit += mask.sum()
-            num_res+= len(residue_dict['amino_acid'])
+            num_res += len(residue_dict["amino_acid"])
             cnt += 1
         except:
             continue
 
     # number of molecules and vocab
-    print('Total number of molecules', cnt)
-    print('average residues:', num_res / cnt)
-    print('average editable residues:', edit / cnt)
+    print("Total number of molecules", cnt)
+    print("average residues:", num_res / cnt)
+    print("average editable residues:", edit / cnt)

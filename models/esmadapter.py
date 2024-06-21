@@ -34,7 +34,11 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
             "--num_layers", default=36, type=int, metavar="N", help="number of layers"
         )
         parser.add_argument(
-            "--embed_dim", default=1280, type=int, metavar="N", help="embedding dimension"
+            "--embed_dim",
+            default=1280,
+            type=int,
+            metavar="N",
+            help="embedding dimension",
         )
         parser.add_argument(
             "--logit_bias", action="store_true", help="whether to apply bias to logits"
@@ -55,11 +59,11 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
         )
 
     @classmethod
-    def from_pretrained(cls, args, override_args=None, name='esm1b_t33_650M_UR50S'):
+    def from_pretrained(cls, args, override_args=None, name="esm1b_t33_650M_UR50S"):
         pretrained_model, alphabet = esm.pretrained.load_model_and_alphabet_hub(name)
 
         args = OmegaConf.merge(vars(deepcopy(pretrained_model.args)), args)
-        args.adapter_layer_indices = [6, 20 ,32]
+        args.adapter_layer_indices = [6, 20, 32]
 
         model = cls(args, deepcopy(alphabet))
         model.load_state_dict(pretrained_model.state_dict(), strict=False)
@@ -68,7 +72,7 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
 
         # freeze pretrained parameters
         for pname, param in model.named_parameters():
-            if 'adapter' not in pname:
+            if "adapter" not in pname:
                 param.requires_grad = False
         return model
 
@@ -95,10 +99,7 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
             self.alphabet_size, self.args.embed_dim, padding_idx=self.padding_idx
         )
         self.layers = nn.ModuleList(
-            [
-                self._init_layer(layer_idx)
-                for layer_idx in range(self.args.layers)
-            ]
+            [self._init_layer(layer_idx) for layer_idx in range(self.args.layers)]
         )
 
         self.contact_head = ContactPredictionHead(
@@ -147,22 +148,39 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
     def _init_submodules_esm1(self):
         self._init_submodules_common()
         self.embed_scale = math.sqrt(self.args.embed_dim)
-        self.embed_positions = SinusoidalPositionalEmbedding(self.args.embed_dim, self.padding_idx)
-        self.embed_out = nn.Parameter(torch.zeros((self.alphabet_size, self.args.embed_dim)))
+        self.embed_positions = SinusoidalPositionalEmbedding(
+            self.args.embed_dim, self.padding_idx
+        )
+        self.embed_out = nn.Parameter(
+            torch.zeros((self.alphabet_size, self.args.embed_dim))
+        )
         self.embed_out_bias = None
         if self.args.final_bias:
             self.embed_out_bias = nn.Parameter(torch.zeros(self.alphabet_size))
 
-    def forward_layers(self, x, encoder_out, padding_mask, repr_layers=[], hidden_representations=[],
-                       need_head_weights=False, attn_weights=[]):
+    def forward_layers(
+        self,
+        x,
+        encoder_out,
+        padding_mask,
+        repr_layers=[],
+        hidden_representations=[],
+        need_head_weights=False,
+        attn_weights=[],
+    ):
         for layer_idx, layer in enumerate(self.layers):
             if layer_idx in self.args.adapter_layer_indices:
                 x, attn = layer(
-                    x, encoder_out, self_attn_padding_mask=padding_mask, need_head_weights=need_head_weights
+                    x,
+                    encoder_out,
+                    self_attn_padding_mask=padding_mask,
+                    need_head_weights=need_head_weights,
                 )
             else:
                 x, attn = layer(
-                    x, self_attn_padding_mask=padding_mask, need_head_weights=need_head_weights
+                    x,
+                    self_attn_padding_mask=padding_mask,
+                    need_head_weights=need_head_weights,
                 )
             if (layer_idx + 1) in repr_layers:
                 hidden_representations[layer_idx + 1] = x.transpose(0, 1)
@@ -172,7 +190,14 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
 
         return x, hidden_representations, attn_weights
 
-    def forward(self, tokens, encoder_out, repr_layers=[], need_head_weights=False, return_contacts=False):
+    def forward(
+        self,
+        tokens,
+        encoder_out,
+        repr_layers=[],
+        need_head_weights=False,
+        return_contacts=False,
+    ):
         if return_contacts:
             need_head_weights = True
 
@@ -186,7 +211,9 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
             # x: B x T x C
             mask_ratio_train = 0.15 * 0.8
             src_lengths = (~padding_mask).sum(-1)
-            mask_ratio_observed = (tokens == self.mask_idx).sum(-1).float() / src_lengths
+            mask_ratio_observed = (tokens == self.mask_idx).sum(
+                -1
+            ).float() / src_lengths
             x = x * (1 - mask_ratio_train) / (1 - mask_ratio_observed)[:, None, None]
 
         x = x + self.embed_positions(tokens)
@@ -222,11 +249,13 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
         #         attn_weights.append(attn.transpose(1, 0))
 
         x, hidden_representations, attn_weights = self.forward_layers(
-            x, encoder_out, padding_mask,
+            x,
+            encoder_out,
+            padding_mask,
             repr_layers=repr_layers,
             hidden_representations=hidden_representations,
             need_head_weights=need_head_weights,
-            attn_weights=attn_weights if need_head_weights else None
+            attn_weights=attn_weights if need_head_weights else None,
         )
 
         if self.model_version == "ESM-1b":
@@ -250,7 +279,9 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
                 attentions = attentions[..., :-1]
             if padding_mask is not None:
                 attention_mask = 1 - padding_mask.type_as(attentions)
-                attention_mask = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(2)
+                attention_mask = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(
+                    2
+                )
                 attentions = attentions * attention_mask[:, None, None, :, :]
             result["attentions"] = attentions
             if return_contacts:
@@ -269,14 +300,14 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
 
 class TransforerLayerWithStructralAdapter(nn.Module):
     def __init__(
-            self,
-            embed_dim,
-            ffn_embed_dim,
-            attention_heads,
-            encoder_embed_dim,
-            add_bias_kv=True,
-            use_esm1b_layer_norm=False,
-            use_rotary_embeddings: bool = False,
+        self,
+        embed_dim,
+        ffn_embed_dim,
+        attention_heads,
+        encoder_embed_dim,
+        add_bias_kv=True,
+        use_esm1b_layer_norm=False,
+        use_rotary_embeddings: bool = False,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -316,21 +347,26 @@ class TransforerLayerWithStructralAdapter(nn.Module):
                 use_rotary_embeddings=True,
             ),
             embedding_dim=self.embed_dim,
-            dropout=0.1
+            dropout=0.1,
         )
         self.structural_adapter_ffn = NormalizedResidualBlock(
             layer=FeedForwardNetwork(
                 self.embed_dim,
                 self.embed_dim // 2,  # NOTE: bottleneck FFN is important
                 # self.ffn_embed_dim,
-                activation_dropout=0.1
+                activation_dropout=0.1,
             ),
             embedding_dim=self.embed_dim,
-            dropout=0.1
+            dropout=0.1,
         )
 
     def forward(
-            self, x, encoder_out, self_attn_mask=None, self_attn_padding_mask=None, need_head_weights=False
+        self,
+        x,
+        encoder_out,
+        self_attn_mask=None,
+        self_attn_padding_mask=None,
+        need_head_weights=False,
     ):
         residual = x
         x = self.self_attn_layer_norm(x)
@@ -353,11 +389,16 @@ class TransforerLayerWithStructralAdapter(nn.Module):
         x = self.fc2(x)
         x = residual + x
 
-        x = x + self.forward_adapter(x, encoder_out, attn_mask=self_attn_mask, attn_padding_mask=self_attn_padding_mask)
+        x = x + self.forward_adapter(
+            x,
+            encoder_out,
+            attn_mask=self_attn_mask,
+            attn_padding_mask=self_attn_padding_mask,
+        )
         return x, attn
 
     def forward_adapter(self, x, encoder_out, attn_mask, attn_padding_mask):
-        encoder_feats = encoder_out['feats']
+        encoder_feats = encoder_out["feats"]
         encoder_feats = encoder_feats.transpose(0, 1)
 
         x = self.structural_adapter_attn(
@@ -366,7 +407,7 @@ class TransforerLayerWithStructralAdapter(nn.Module):
             value=encoder_feats,
             key_padding_mask=attn_padding_mask,
             attn_mask=attn_mask,
-            need_weights=False
+            need_weights=False,
         )[0]
 
         x = self.structural_adapter_ffn(x)
