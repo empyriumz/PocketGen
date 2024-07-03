@@ -14,13 +14,6 @@ from radial_basis import RadialBasis
 
 def stable_norm(input, *args, **kwargs):
     return torch.norm(input, *args, **kwargs)
-    input = input.clone()
-    with torch.no_grad():
-        sign = torch.sign(input)
-        input = torch.abs(input)
-        input.clamp_(min=1e-10)
-        input = sign * input
-    return torch.norm(input, *args, **kwargs)
 
 
 class GET(nn.Module):

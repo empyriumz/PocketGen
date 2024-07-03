@@ -8,6 +8,7 @@ from rdkit.Chem import rdchem
 from rdkit.Chem import ChemicalFeatures
 from rdkit import RDConfig
 
+# fmt: off
 ATOM_FAMILIES = [
     "Acceptor",
     "Donor",
@@ -69,45 +70,12 @@ ALPHABET = [
     "V",
 ]
 ATOM_TYPES = [
-    "",
-    "N",
-    "CA",
-    "C",
-    "O",
-    "CB",
-    "CG",
-    "CG1",
-    "CG2",
-    "OG",
-    "OG1",
-    "SG",
-    "CD",
-    "CD1",
-    "CD2",
-    "ND1",
-    "ND2",
-    "OD1",
-    "OD2",
-    "SD",
-    "CE",
-    "CE1",
-    "CE2",
-    "CE3",
-    "NE",
-    "NE1",
-    "NE2",
-    "OE1",
-    "OE2",
-    "CH2",
-    "NH1",
-    "NH2",
-    "OH",
-    "CZ",
-    "CZ2",
-    "CZ3",
-    "NZ",
-    "OXT",
+    "", "N", "CA", "C", "O", "CB", "CG", "CG1", "CG2", "OG", "OG1", "SG", "CD",
+    "CD1", "CD2", "ND1", "ND2", "OD1", "OD2", "SD", "CE", "CE1", "CE2", "CE3",
+    "NE", "NE1", "NE2", "OE1", "OE2", "CH2", "NH1", "NH2", "OH", "CZ", "CZ2",
+    "CZ3", "NZ", "OXT"
 ]
+
 RES_ATOM14 = [
     [""] * 14,
     ["N", "CA", "C", "O", "CB", "", "", "", "", "", "", "", "", ""],

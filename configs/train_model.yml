@@ -40,5 +40,5 @@ train:
 
 dataset:
   name: pl
-  path: ./data/crossdocked_v1.1_rmsd1.0_pocket10
-  split: ./data/crossdocked_v1.1_rmsd1.0_pocket10/split.pt
+  path: /host/scratch/pocketgen/CrossDocked/crossdocked_v1.1_rmsd1.0_pocket10_processed_final.lmdb
+  split: /host/scratch/pocketgen/CrossDocked/crossdocked_pocket10_pose_split.pt

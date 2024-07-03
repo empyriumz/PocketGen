@@ -2,26 +2,19 @@ import copy
 import sys
 
 sys.path.append("..")
-import numpy as np
-from rdkit import RDConfig
-import random
 import os
 import torch
 import torch.nn as nn
-from torch.nn import Module, Linear, Embedding
+from torch.nn import Module, Linear
 from torch.nn import functional as F
-from torch_scatter import scatter_add, scatter_mean
-from torch_geometric.data import Data, Batch
-from rdkit.Chem import ChemicalFeatures
 from rdkit import Chem
 from rdkit.Chem import rdchem
 
-from .encoders import get_encoder, MLP
+from .encoders import get_encoder
 from .encoders.cftfm import residue_atom_mask
-from .common import *
-from .protein_features import *
-from .esmadapter import *
-from .esm2adapter import *
+from .protein_features import PositionalEncodings
+from .esmadapter import ProteinBertModelWithStructuralAdatper
+from .esm2adapter import ESM2WithStructuralAdatper
 from utils.pdb_utils import VOCAB
 from utils.rmsd import kabsch_torch
 from utils.protein_ligand import PDBProtein

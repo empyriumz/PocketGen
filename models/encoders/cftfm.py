@@ -6,13 +6,12 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn import Module, Sequential, ModuleList, Linear, Conv1d
-from torch_geometric.nn import radius_graph, knn_graph
+from torch_geometric.nn import knn_graph
 from torch_geometric.utils import add_self_loops
-from torch_scatter import scatter_sum, scatter_softmax, scatter_mean, scatter_std
+from torch_scatter import scatter_sum, scatter_softmax, scatter_mean
 import numpy as np
 from .radial_basis import RadialBasis
 import copy
-from math import pi as PI
 
 from ..common import GaussianSmearing, ShiftedSoftplus
 from ..protein_features import ProteinFeatures
@@ -1974,13 +1973,6 @@ class GET(nn.Module):
 
 
 def stable_norm(input, *args, **kwargs):
-    return torch.norm(input, *args, **kwargs)
-    input = input.clone()
-    with torch.no_grad():
-        sign = torch.sign(input)
-        input = torch.abs(input)
-        input.clamp_(min=1e-10)
-        input = sign * input
     return torch.norm(input, *args, **kwargs)
 
 

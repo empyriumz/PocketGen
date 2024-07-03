@@ -5,14 +5,12 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from itertools import compress
-from torch_geometric.nn.pool import knn_graph
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_geometric.data import Data
 from torch_scatter import scatter_add
 from rdkit import Chem
-from torch_geometric.nn import radius
 from .data import ProteinLigandData
-from .protein_ligand import ATOM_FAMILIES
+from .protein_ligand import ATOM_FAMILIES, ATOM_TYPES
 
 # allowable node and edge features
 allowable_features = {
@@ -59,7 +57,6 @@ def mol_to_graph_data_obj_simple(mol):
     :return: graph data object with the attributes: x, edge_index, edge_attr
     """
     # atoms
-    num_atom_features = 2  # atom type,  chirality tag
     atom_features_list = []
     for atom in mol.GetAtoms():
         atom_feature = [
@@ -151,212 +148,26 @@ class RefineData(object):
         return data
 
 
-class FocalBuilder(object):
-    def __init__(self, close_threshold=0.8, max_bond_length=2.4):
-        self.close_threshold = close_threshold
-        self.max_bond_length = max_bond_length
-        super().__init__()
-
-    def __call__(self, data: ProteinLigandData):
-        # ligand_context_pos = data.ligand_context_pos
-        # ligand_pos = data.ligand_pos
-        ligand_masked_pos = data.ligand_masked_pos
-        protein_pos = data.protein_pos
-        context_idx = data.context_idx
-        masked_idx = data.masked_idx
-        old_bond_index = data.ligand_bond_index
-        # old_bond_types = data.ligand_bond_type  # type: 0, 1, 2
-        has_unmask_atoms = context_idx.nelement() > 0
-        if has_unmask_atoms:
-            # # get bridge bond index (mask-context bond)
-            ind_edge_index_candidate = [
-                (context_node in context_idx) and (mask_node in masked_idx)
-                for mask_node, context_node in zip(*old_bond_index)
-            ]  # the mask-context order is right
-            bridge_bond_index = old_bond_index[:, ind_edge_index_candidate]
-            # candidate_bond_types = old_bond_types[idx_edge_index_candidate]
-            idx_generated_in_whole_ligand = bridge_bond_index[0]
-            idx_focal_in_whole_ligand = bridge_bond_index[1]
-
-            index_changer_masked = torch.zeros(masked_idx.max() + 1, dtype=torch.int64)
-            index_changer_masked[masked_idx] = torch.arange(len(masked_idx))
-            idx_generated_in_ligand_masked = index_changer_masked[
-                idx_generated_in_whole_ligand
-            ]
-            pos_generate = ligand_masked_pos[idx_generated_in_ligand_masked]
-
-            data.idx_generated_in_ligand_masked = idx_generated_in_ligand_masked
-            data.pos_generate = pos_generate
-
-            index_changer_context = torch.zeros(
-                context_idx.max() + 1, dtype=torch.int64
-            )
-            index_changer_context[context_idx] = torch.arange(len(context_idx))
-            idx_focal_in_ligand_context = index_changer_context[
-                idx_focal_in_whole_ligand
-            ]
-            idx_focal_in_compose = idx_focal_in_ligand_context  # if ligand_context was not before protein in the compose, this was not correct
-            data.idx_focal_in_compose = idx_focal_in_compose
-
-            data.idx_protein_all_mask = torch.empty(
-                0, dtype=torch.long
-            )  # no use if has context
-            data.y_protein_frontier = torch.empty(
-                0, dtype=torch.bool
-            )  # no use if has context
-
-        else:  # # the initial atom. surface atoms between ligand and protein
-            assign_index = radius(
-                x=ligand_masked_pos, y=protein_pos, r=4.0, num_workers=16
-            )
-            if assign_index.size(1) == 0:
-                dist = torch.norm(
-                    data.protein_pos.unsqueeze(1) - data.ligand_masked_pos.unsqueeze(0),
-                    p=2,
-                    dim=-1,
-                )
-                assign_index = torch.nonzero(dist <= torch.min(dist) + 1e-5)[
-                    0:1
-                ].transpose(0, 1)
-            idx_focal_in_protein = assign_index[0]
-            data.idx_focal_in_compose = idx_focal_in_protein  # no ligand context, so all composes are protein atoms
-            data.pos_generate = ligand_masked_pos[assign_index[1]]
-            data.idx_generated_in_ligand_masked = torch.unique(
-                assign_index[1]
-            )  # for real of the contractive transform
-
-            data.idx_protein_all_mask = (
-                data.idx_protein_in_compose
-            )  # for input of initial frontier prediction
-            y_protein_frontier = torch.zeros_like(
-                data.idx_protein_all_mask, dtype=torch.bool
-            )  # for label of initial frontier prediction
-            y_protein_frontier[torch.unique(idx_focal_in_protein)] = True
-            data.y_protein_frontier = y_protein_frontier
-
-        # generate not positions: around pos_focal ( with `max_bond_length` distance) but not close to true generated within `close_threshold`
-        # pos_focal = ligand_context_pos[idx_focal_in_ligand_context]
-        # pos_notgenerate = pos_focal + torch.randn_like(pos_focal) * self.max_bond_length  / 2.4
-        # dist = torch.norm(pos_generate - pos_notgenerate, p=2, dim=-1)
-        # ind_close = (dist < self.close_threshold)
-        # while ind_close.any():
-        #     new_pos_notgenerate = pos_focal[ind_close] + torch.randn_like(pos_focal[ind_close]) * self.max_bond_length  / 2.3
-        #     dist[ind_close] = torch.norm(pos_generate[ind_close] - new_pos_notgenerate, p=2, dim=-1)
-        #     pos_notgenerate[ind_close] = new_pos_notgenerate
-        #     ind_close = (dist < self.close_threshold)
-        # data.pos_notgenerate = pos_notgenerate
-
-        return data
-
-
-class AtomComposer(object):
-
-    def __init__(self, protein_dim, ligand_dim, knn):
-        super().__init__()
-        self.protein_dim = protein_dim
-        self.ligand_dim = ligand_dim
-        self.knn = knn  # knn of compose atoms
-
-    def __call__(self, data: ProteinLigandData):
-        # fetch ligand context and protein from data
-        ligand_context_pos = data["ligand_context_pos"]
-        ligand_context_feature_full = data["ligand_context_feature_full"]
-        protein_pos = data["protein_pos"]
-        protein_atom_feature = data["protein_atom_feature"]
-        len_ligand_ctx = len(ligand_context_pos)
-        len_protein = len(protein_pos)
-
-        # compose ligand context and protein. save idx of them in compose
-        data["compose_pos"] = torch.cat([ligand_context_pos, protein_pos], dim=0)
-        len_compose = len_ligand_ctx + len_protein
-        ligand_context_feature_full_expand = torch.cat(
-            [
-                ligand_context_feature_full,
-                torch.zeros(
-                    [len_ligand_ctx, self.protein_dim - self.ligand_dim],
-                    dtype=torch.long,
-                ),
-            ],
-            dim=1,
-        )
-        data["compose_feature"] = torch.cat(
-            [ligand_context_feature_full_expand, protein_atom_feature], dim=0
-        )
-        data["idx_ligand_ctx_in_compose"] = torch.arange(
-            len_ligand_ctx, dtype=torch.long
-        )  # can be delete
-        data["idx_protein_in_compose"] = (
-            torch.arange(len_protein, dtype=torch.long) + len_ligand_ctx
-        )  # can be delete
-
-        # build knn graph and bond type
-        data = self.get_knn_graph(
-            data, self.knn, len_ligand_ctx, len_compose, num_workers=16
-        )
-        return data
-
-    @staticmethod
-    def get_knn_graph(
-        data: ProteinLigandData,
-        knn,
-        len_ligand_ctx,
-        len_compose,
-        num_workers=1,
-    ):
-        data["compose_knn_edge_index"] = knn_graph(
-            data["compose_pos"], knn, flow="target_to_source", num_workers=num_workers
-        )
-
-        id_compose_edge = (
-            data["compose_knn_edge_index"][0, : len_ligand_ctx * knn] * len_compose
-            + data["compose_knn_edge_index"][1, : len_ligand_ctx * knn]
-        )
-        id_ligand_ctx_edge = (
-            data["ligand_context_bond_index"][0] * len_compose
-            + data["ligand_context_bond_index"][1]
-        )
-        idx_edge = [torch.nonzero(id_compose_edge == id_) for id_ in id_ligand_ctx_edge]
-        idx_edge = torch.tensor(
-            [a.squeeze() if len(a) > 0 else torch.tensor(-1) for a in idx_edge],
-            dtype=torch.long,
-        )
-        data["compose_knn_edge_type"] = torch.zeros(
-            len(data["compose_knn_edge_index"][0]), dtype=torch.long
-        )  # for encoder edge embedding
-        data["compose_knn_edge_type"][idx_edge[idx_edge >= 0]] = data[
-            "ligand_context_bond_type"
-        ][idx_edge >= 0]
-        data["compose_knn_edge_feature"] = torch.cat(
-            [
-                torch.ones(
-                    [len(data["compose_knn_edge_index"][0]), 1], dtype=torch.long
-                ),
-                torch.zeros(
-                    [len(data["compose_knn_edge_index"][0]), 3], dtype=torch.long
-                ),
-            ],
-            dim=-1,
-        )
-        data["compose_knn_edge_feature"][idx_edge[idx_edge >= 0]] = F.one_hot(
-            data["ligand_context_bond_type"][idx_edge >= 0], num_classes=4
-        )  # 0 (1,2,3)-onehot
-        return data
-
-
 class FeaturizeProteinAtom(object):
 
     def __init__(self):
         super().__init__()
         self.atomic_numbers = torch.LongTensor([6, 7, 8, 16, 34])  # H, C, N, O, S, Se
-        self.atom_types = torch.arange(38)
+        self.atom_types = ATOM_TYPES
         self.max_num_aa = 21
 
     @property
     def feature_dim(self):
         return 38
 
-    def __call__(self, data: ProteinLigandData):
-        atom_type = data["protein_atom_name"].view(-1, 1) == self.atom_types.view(1, -1)
+    def __call__(self, data):
+        # one-hot encoding for atom type
+        atom_type = torch.tensor(
+            [
+                [name == atom for atom in self.atom_types]
+                for name in data["protein_atom_name"]
+            ]
+        )
         data["protein_atom_feature"] = atom_type.float()
         return data
 

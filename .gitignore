@@ -1,4 +1,6 @@
 tmp/
+wandb/
+logs/
 checkpoints/
 examples/
 .vscode/

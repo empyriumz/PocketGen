@@ -7,14 +7,11 @@ import random
 from vina import Vina
 import torch
 from utils.protein_ligand import PDBProtein, parse_sdf_file
-from utils.evaluation.docking_vina import *
-from utils.data import torchify_dict
+from utils.evaluation.docking_vina import pybel, PrepLig, PrepProt
 from torch_geometric.transforms import Compose
-from utils.datasets import *
-from utils.transforms import *
-from utils.misc import *
-from utils.data import *
-from utils.data import BatchConverter, Alphabet
+from utils.transforms import FeaturizeProteinAtom, FeaturizeLigandAtom
+from utils.misc import load_config, seed_all
+from utils.data import torchify_dict, BatchConverter, Alphabet, collate_mols_block
 from torch.utils.data import DataLoader
 from models.PD import Pocket_Design_new
 from functools import partial

@@ -2,19 +2,18 @@ import shutil
 import argparse
 from functools import partial
 import torch
-
-torch.autograd.set_detect_anomaly(True)
-import esm
+import os
+import copy
+from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 import torch.utils.tensorboard
 from torch_geometric.transforms import Compose
-import numpy as np
-from models.PD import Pocket_Design_new, sample_from_categorical, interpolation_init_new
-from utils.datasets import *
-from utils.misc import *
-from utils.train import *
-from utils.data import *
-from utils.transforms import *
+from models.PD import Pocket_Design_new, sample_from_categorical
+from utils.datasets import get_dataset
+from utils.misc import load_config, seed_all, get_new_log_dir, get_logger
+from utils.train import inf_iterator, get_optimizer, get_scheduler
+from utils.data import Alphabet, BatchConverter, collate_mols_block
+from utils.transforms import FeaturizeProteinAtom, FeaturizeLigandAtom
 from torch.utils.data import DataLoader
 import wandb
 
@@ -60,20 +59,16 @@ if __name__ == "__main__":
             ligand_featurizer,
         ]
     )
-
-    # esm
-    name = "esm1b_t33_650M_UR50S"
-    pretrained_model, alphabet = esm.pretrained.load_model_and_alphabet_hub(name)
-    batch_converter = alphabet.get_batch_converter()
-    del pretrained_model
+    alphabet = Alphabet.from_architecture("ESM-1b")
+    batch_converter = BatchConverter(alphabet)
 
     # Datasets and loaders
     logger.info("Loading dataset...")
-    dataset, subsets = get_dataset(
+    dataset = get_dataset(
         config=config.dataset,
         transform=transform,
     )
-    train_set, val_set = subsets["train"], subsets["test"]
+    train_set, val_set = dataset["train"], dataset["test"]
     train_iterator = inf_iterator(
         DataLoader(
             train_set,
