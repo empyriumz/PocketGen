@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Subset
-from .pl import PocketLigandPairDataset
+from .pl_original import PocketLigandPairDataset
 
 
 def get_dataset(config, *args, **kwargs):
@@ -17,17 +17,7 @@ def get_dataset(config, *args, **kwargs):
         - subsets is a dictionary of subsets (e.g., train, validation) if splits are provided,
           otherwise an empty dictionary.
     """
-    # Initialize dataset based on name
-    name = config["name"]
-    if config["name"] == "pl":
-        dataset = PocketLigandPairDataset(config["path"], *args, **kwargs)
-    else:
-        raise NotImplementedError(f"Unknown dataset: {name}")
+    train_dataset = PocketLigandPairDataset(config["train_path"], *args, **kwargs)
+    val_dataset = PocketLigandPairDataset(config["val_path"], *args, **kwargs)
 
-    # Handle dataset splitting
-    subsets = {}
-    if "split" in config:
-        split = torch.load(config["split"])
-        subsets = {k: Subset(dataset, indices=v) for k, v in split.items()}
-
-    return subsets
+    return train_dataset, val_dataset

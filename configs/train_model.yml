@@ -39,6 +39,5 @@ train:
     min_lr: 1.e-5
 
 dataset:
-  name: pl
-  path: /host/scratch/pocketgen/CrossDocked/crossdocked_v1.1_rmsd1.0_pocket10_processed_final.lmdb
-  split: /host/scratch/pocketgen/CrossDocked/crossdocked_pocket10_pose_split.pt
+  train_path: /host/scratch/pocketgen/PDBBind_v2020/processed/train
+  val_path: /host/scratch/pocketgen/PDBBind_v2020/processed/val

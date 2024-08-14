@@ -448,8 +448,14 @@ class Pocket_Design_new(Module):
                 self.standard2alphabet[batch["amino_acid"][residue_mask] - 1],
             )
             # bond and angle loss
-            # loss_list[2] += 3*self.proteinloss.structure_loss(res_X[residue_mask], label_X[residue_mask], batch['amino_acid'][residue_mask] - 1, batch['res_idx'][residue_mask], batch['amino_acid_batch'][residue_mask])
-            loss_list[2] += 0.0
+            loss_list[2] += 3 * self.proteinloss.structure_loss(
+                res_X[residue_mask],
+                label_X[residue_mask],
+                batch["amino_acid"][residue_mask] - 1,
+                batch["res_idx"][residue_mask],
+                batch["amino_acid_batch"][residue_mask],
+            )
+            # loss_list[2] += 0.0
 
             sampled_type, _ = sample_from_categorical(pred_res_type.detach())
         aar = (
@@ -581,7 +587,7 @@ class Pocket_Design_new(Module):
         label_X, res_X = copy.deepcopy(batch["residue_pos"]), copy.deepcopy(
             batch["residue_pos"]
         )
-        label_ligand, pred_ligand = copy.deepcopy(batch["ligand_pos"]), copy.deepcopy(
+        _, pred_ligand = copy.deepcopy(batch["ligand_pos"]), copy.deepcopy(
             batch["ligand_pos"]
         )
         res_X = interpolation_init_new(
@@ -602,28 +608,7 @@ class Pocket_Design_new(Module):
         ligand_feat = self.ligand_atom_emb(batch["ligand_feat"])
 
         for t in range(self.interpolate_steps):
-            if t < -1:
-                res_S[residue_mask] = (
-                    self.alphabet2standard[sampled_type.detach().clone()] + 1
-                )
-                atom_emb = self.protein_atom_emb(
-                    self.res_atom_type[res_S]
-                )  # atom embedding
-                atom_pos_emb = (
-                    self.atom_pos_embedding(torch.arange(14).to(self.device))
-                    .unsqueeze(0)
-                    .repeat(res_S.shape[0], 1, 1)
-                )  # pos embedding
-                res_emb = (
-                    self.residue_embedding(res_S).unsqueeze(-2).repeat(1, 14, 1)
-                )  # res embedding
-                res_pos_emb = (
-                    self.pe(batch["res_idx"]).unsqueeze(-2).repeat(1, 14, 1)
-                )  # res pos embedding
-                res_H = torch.cat(
-                    [atom_emb, atom_pos_emb, res_emb, res_pos_emb], dim=-1
-                )
-            elif t == 0:
+            if t == 0:
                 atom_emb = self.protein_atom_emb(
                     self.res_atom_type[res_S]
                 )  # atom embedding

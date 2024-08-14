@@ -2,7 +2,6 @@ import copy
 import warnings
 import numpy as np
 import torch
-import torch.nn as nn
 from torch_geometric.data import Data, Batch
 
 from .warmup import GradualWarmupScheduler

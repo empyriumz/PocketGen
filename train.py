@@ -7,9 +7,8 @@ from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
-
 from models.Pocket_Design import Pocket_Design
-from utils.datasets import get_dataset
+from utils.datasets.pl_original import PocketLigandPairDataset
 from utils.misc import load_config, seed_all
 from utils.train import inf_iterator, get_optimizer, get_scheduler
 from utils.data import Alphabet, BatchConverter, collate_mols_block
@@ -25,17 +24,17 @@ def parse_args():
 
 
 def setup_data(config, transform, batch_converter):
-    dataset = get_dataset(config=config.dataset, transform=transform)
-    train_set, val_set = dataset["train"], dataset["test"]
+    train_dataset = PocketLigandPairDataset(config["train_path"], transform=transform)
+    val_dataset = PocketLigandPairDataset(config["val_path"], transform=transform)
     train_loader = DataLoader(
-        train_set,
+        train_dataset,
         batch_size=config.train.batch_size,
         shuffle=True,
         num_workers=config.train.num_workers,
         collate_fn=partial(collate_mols_block, batch_converter=batch_converter),
     )
     val_loader = DataLoader(
-        val_set,
+        val_dataset,
         batch_size=config.train.batch_size,
         shuffle=False,
         num_workers=config.train.num_workers,

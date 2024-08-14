@@ -69,12 +69,6 @@ ALPHABET = [
     "Y",
     "V",
 ]
-ATOM_TYPES = [
-    "", "N", "CA", "C", "O", "CB", "CG", "CG1", "CG2", "OG", "OG1", "SG", "CD",
-    "CD1", "CD2", "ND1", "ND2", "OD1", "OD2", "SD", "CE", "CE1", "CE2", "CE3",
-    "NE", "NE1", "NE2", "OE1", "OE2", "CH2", "NH1", "NH2", "OH", "CZ", "CZ2",
-    "CZ3", "NZ", "OXT"
-]
 
 RES_ATOM14 = [
     [""] * 14,
@@ -116,10 +110,13 @@ RES_ATOM14 = [
 ]
 
 NUM_ATOMS = [4, 5, 11, 8, 8, 6, 9, 9, 4, 10, 8, 8, 9, 8, 11, 7, 6, 7, 14, 12, 7]
-
-
-class PDBProtein(object):
-    AA_NAME_SYM = {
+ATOM_TYPES = [
+    "", "N", "CA", "C", "O", "CB", "CG", "CG1", "CG2", "OG", "OG1", "SG", "CD",
+    "CD1", "CD2", "ND1", "ND2", "OD1", "OD2", "SD", "CE", "CE1", "CE2", "CE3",
+    "NE", "NE1", "NE2", "OE1", "OE2", "CH2", "NH1", "NH2", "OH", "CZ", "CZ2",
+    "CZ3", "NZ", "OXT"
+]
+AA_NAME_SYM = {
         "ALA": "A",
         "ARG": "R",
         "ASN": "N",
@@ -142,10 +139,10 @@ class PDBProtein(object):
         "VAL": "V",
     }
 
-    AA_NAME_NUMBER = {k: i + 1 for i, (k, _) in enumerate(AA_NAME_SYM.items())}
+AA_NAME_NUMBER = {k: i + 1 for i, (k, _) in enumerate(AA_NAME_SYM.items())}
+BACKBONE_NAMES = ["CA", "C", "N", "O"]
 
-    BACKBONE_NAMES = ["CA", "C", "N", "O"]
-
+class PDBProtein(object):
     def __init__(self, data, mode="auto"):
         super().__init__()
         if (data[-4:].lower() == ".pdb" and mode == "auto") or mode == "path":
@@ -232,8 +229,8 @@ class PDBProtein(object):
                 np.array([atom["x"], atom["y"], atom["z"]], dtype=np.float32)
             )
             self.atom_name.append(atom["atom_name"])
-            self.is_backbone.append(atom["atom_name"] in self.BACKBONE_NAMES)
-            self.atom_to_aa_type.append(self.AA_NAME_NUMBER[atom["res_name"]])
+            self.is_backbone.append(atom["atom_name"] in BACKBONE_NAMES)
+            self.atom_to_aa_type.append(AA_NAME_NUMBER[atom["res_name"]])
 
             chain_res_id = "%s_%s_%d_%s" % (
                 atom["chain"],
@@ -249,7 +246,7 @@ class PDBProtein(object):
                     "chain": atom["chain"],
                     "segment": atom["segment"],
                     "res_id": atom["res_id"],
-                    "full_seq_idx": num_residue,
+                    "small_pocket_idx": num_residue,
                 }
             else:
                 assert residues_tmp[chain_res_id]["name"] == atom["res_name"]
@@ -265,20 +262,20 @@ class PDBProtein(object):
             for atom_idx in residue["atoms"]:
                 sum_pos += self.pos[atom_idx] * self.atomic_weight[atom_idx]
                 sum_mass += self.atomic_weight[atom_idx]
-                if self.atom_name[atom_idx] in self.BACKBONE_NAMES:
+                if self.atom_name[atom_idx] in BACKBONE_NAMES:
                     residue["pos_%s" % self.atom_name[atom_idx]] = self.pos[atom_idx]
             residue["center_of_mass"] = sum_pos / sum_mass
             self.residue_natoms.append(len(residue["atoms"]))
             assert (
-                len(residue["atoms"]) <= NUM_ATOMS[self.AA_NAME_NUMBER[residue["name"]]]
+                len(residue["atoms"]) <= NUM_ATOMS[AA_NAME_NUMBER[residue["name"]]]
             )
 
             # Process backbone atoms of residues
-            self.amino_acid.append(self.AA_NAME_NUMBER[residue["name"]])
+            self.amino_acid.append(AA_NAME_NUMBER[residue["name"]])
             self.center_of_mass.append(residue["center_of_mass"])
             self.amino_idx.append(residue["res_id"])
-            self.seq.append(self.AA_NAME_SYM[residue["name"]])
-            for name in self.BACKBONE_NAMES:
+            self.seq.append(AA_NAME_SYM[residue["name"]])
+            for name in BACKBONE_NAMES:
                 pos_key = "pos_%s" % name  # pos_CA, pos_C, pos_N, pos_O
                 if pos_key in residue:
                     getattr(self, pos_key).append(residue[pos_key])
@@ -329,7 +326,7 @@ class PDBProtein(object):
         selected = []
         sel_idx = set()
         selected_mask = np.zeros(len(self.residues), dtype=bool)
-        full_seq_idx = set()
+        small_pocket_idx = set()
         if selected_residue is None:
             selected_residue = self.residues
         # The time-complexity is O(mn).
@@ -341,12 +338,12 @@ class PDBProtein(object):
                 if distance <= radius and i not in sel_idx:
                     selected.append(residue)
                     sel_idx.add(i)
-                    full_seq_idx.add(residue["full_seq_idx"])
+                    small_pocket_idx.add(residue["small_pocket_idx"])
                     break
         selected_mask[list(sel_idx)] = 1
         if return_mask:
-            return list(full_seq_idx), selected_mask
-        return list(full_seq_idx), selected
+            return list(small_pocket_idx), selected_mask
+        return list(small_pocket_idx), selected
 
     # can be used for select pocket residues
 

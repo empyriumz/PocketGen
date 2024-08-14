@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import copy
-from torch_geometric.nn import radius_graph, knn_graph
+from torch_geometric.nn import knn_graph
 
 
 class PositionalEncodings(nn.Module):

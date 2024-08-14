@@ -3,7 +3,6 @@ from rdkit import Chem
 import os
 import argparse
 from tqdm import tqdm
-import random
 from vina import Vina
 import torch
 from utils.protein_ligand import PDBProtein, parse_sdf_file
@@ -12,6 +11,7 @@ from torch_geometric.transforms import Compose
 from utils.transforms import FeaturizeProteinAtom, FeaturizeLigandAtom
 from utils.misc import load_config, seed_all
 from utils.data import torchify_dict, BatchConverter, Alphabet, collate_mols_block
+from utils.datasets.pl import from_protein_ligand_dicts
 from torch.utils.data import DataLoader
 from models.PD import Pocket_Design_new
 from functools import partial
@@ -82,136 +82,22 @@ def vina_mp(pro_path, lig_path, number_list):
     return vina_list
 
 
-def from_protein_ligand_dicts(
-    protein_dict=None,
-    ligand_dict=None,
-    residue_dict=None,
-    seq=None,
-    full_seq_idx=None,
-    r10_idx=None,
-):
-    instance = {}
-
-    if protein_dict is not None:
-        for key, item in protein_dict.items():
-            instance["protein_" + key] = item
-
-    if ligand_dict is not None:
-        for key, item in ligand_dict.items():
-            instance["ligand_" + key] = item
-
-    if residue_dict is not None:
-        for key, item in residue_dict.items():
-            instance[key] = item
-
-    if seq is not None:
-        instance["seq"] = seq
-
-    if full_seq_idx is not None:
-        instance["full_seq_idx"] = full_seq_idx
-
-    if r10_idx is not None:
-        instance["r10_idx"] = r10_idx
-
-    return instance
-
-
-def ith_true_index(tensor, i):
-    true_indices = torch.nonzero(tensor).squeeze()
-    return true_indices[i].item()
-
-
-def pdb2data(
-    lig_path,
-    pro_path,
-    seq,
-    full_seq_idx,
-    r10_idx,
-    protein_edit_residue,
-    protein_filename,
-    ligand_filename,
-    whole_protein_name,
-):
-    with open(pro_path, "r") as f:
-        pdb_block = f.read()
-    protein = PDBProtein(pdb_block)
-    pocket_dict = protein.to_dict_atom()
-    residue_dict = protein.to_dict_residue()
-    ligand_dict = parse_sdf_file(lig_path)
-    residue_dict["protein_edit_residue"] = protein_edit_residue
-    dataset = []
-    for _ in range(10):
-        full_seq_idx1 = random.sample(list(enumerate(full_seq_idx.tolist())), 1)
-        true_index = ith_true_index(protein_edit_residue, full_seq_idx1[0][0])
-        residue_dict["protein_edit_residue"] = torch.zeros_like(
-            protein_edit_residue
-        ).bool()
-        residue_dict["protein_edit_residue"][true_index] = True
-        full_seq_idx1 = [id for _, id in full_seq_idx1]
-        data = from_protein_ligand_dicts(
-            protein_dict=torchify_dict(pocket_dict),
-            ligand_dict=torchify_dict(ligand_dict),
-            residue_dict=torchify_dict(residue_dict),
-            seq=seq,
-            full_seq_idx=torch.tensor(full_seq_idx1),
-            r10_idx=torch.tensor(r10_idx),
-        )
-        data["protein_filename"] = protein_filename
-        data["ligand_filename"] = ligand_filename
-        data["whole_protein_name"] = whole_protein_name
-        dataset.append(transform(data))
-    return dataset
-
-
-def input_data(args, index):
-    protein_filename = index[0]
-    ligand_filename = index[1]
-    whole_protein_name = index[2]
-    protein_edit_residue = index[3]
-    seq = index[4]
-    full_seq_idx = index[5]
-    r10_idx = index[6]
-    lig_path = os.path.join(args.source, ligand_filename)
-    pro_path = os.path.join(args.source, whole_protein_name)
-    with open(pro_path, "r") as f:
-        pdb_block = f.read()
-    protein = PDBProtein(pdb_block)
-    pocket_dict = protein.to_dict_atom()
-    residue_dict = protein.to_dict_residue()
-    ligand_dict = parse_sdf_file(lig_path)
-    residue_dict["protein_edit_residue"] = protein_edit_residue
-
-    data = from_protein_ligand_dicts(
-        protein_dict=torchify_dict(pocket_dict),
-        ligand_dict=torchify_dict(ligand_dict),
-        residue_dict=torchify_dict(residue_dict),
-        seq=seq,
-        full_seq_idx=torch.tensor(full_seq_idx),
-        r10_idx=torch.tensor(r10_idx),
-    )
-    data["protein_filename"] = protein_filename
-    data["ligand_filename"] = ligand_filename
-    data["whole_protein_name"] = whole_protein_name
-
-    return transform(data)
-
-
 def name2data(name, args):
     pdb_path = os.path.join(args.target, name, name + ".pdb")
     lig_path = os.path.join(args.target, name, name + "_ligand.sdf")
-    pocket_path = os.path.join(args.target, name, name + "_pocket.pdb")
+    pocket_path = os.path.join(args.target, name, name + "_pocket10.pdb")
     with open(pdb_path, "r") as f:
         pdb_block = f.read()
     protein = PDBProtein(pdb_block)
     seq = "".join(protein.to_dict_residue()["seq"])
     ligand = parse_sdf_file(lig_path, feat=False)
-    r10_idx, r10_residues = protein.query_residues_ligand(
+    large_pocket_idx, r10_residues = protein.query_residues_ligand(
         ligand, radius=10, selected_residue=None, return_mask=False
     )
-    full_seq_idx, _ = protein.query_residues_ligand(
+    small_pocket_idx, _ = protein.query_residues_ligand(
         ligand, radius=3.5, selected_residue=r10_residues, return_mask=False
     )
-    assert len(r10_idx) == len(r10_residues)
+    assert len(large_pocket_idx) == len(r10_residues)
 
     pdb_block_pocket = protein.residues_to_pdb_block(r10_residues)
     with open(pocket_path, "w") as f:
@@ -227,18 +113,18 @@ def name2data(name, args):
     _, residue_dict["protein_edit_residue"] = pocket.query_residues_ligand(ligand)
     assert residue_dict["protein_edit_residue"].sum() > 0 and residue_dict[
         "protein_edit_residue"
-    ].sum() == len(full_seq_idx)
-    assert len(residue_dict["protein_edit_residue"]) == len(r10_idx)
-    full_seq_idx.sort()
-    r10_idx.sort()
+    ].sum() == len(small_pocket_idx)
+    assert len(residue_dict["protein_edit_residue"]) == len(large_pocket_idx)
+    small_pocket_idx.sort()
+    large_pocket_idx.sort()
 
     data = from_protein_ligand_dicts(
         protein_dict=torchify_dict(pocket_dict),
         ligand_dict=torchify_dict(ligand),
         residue_dict=torchify_dict(residue_dict),
         seq=seq,
-        full_seq_idx=torch.tensor(full_seq_idx),
-        r10_idx=torch.tensor(r10_idx),
+        small_pocket_idx=torch.tensor(small_pocket_idx),
+        large_pocket_idx=torch.tensor(large_pocket_idx),
     )
     data["protein_filename"] = pocket_path
     data["ligand_filename"] = lig_path
@@ -282,7 +168,7 @@ if __name__ == "__main__":
     model.load_state_dict(ckpt["model"])
 
     print("Loading dataset...")
-    names = ["2p16"]
+    names = ["7w1j"]
     record = [[] for _ in range(len(names))]
 
     for i in tqdm(range(len(names))):
