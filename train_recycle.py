@@ -116,7 +116,7 @@ if __name__ == "__main__":
                 batch[key] = batch[key].to(args.device)
 
         # loss, loss_list, aar, rmsd = model(batch)
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         label_ligand = copy.deepcopy(batch["ligand_pos"])
         atom_mask = model.residue_atom_mask[batch["amino_acid"][residue_mask]].bool()
         label_X = copy.deepcopy(batch["residue_pos"])
@@ -253,7 +253,7 @@ if __name__ == "__main__":
                     if torch.is_tensor(batch[key]):
                         batch[key] = batch[key].to(args.device)
 
-                residue_mask = batch["protein_edit_residue"]
+                residue_mask = batch["small_pocket_residue_mask"]
                 label_ligand = copy.deepcopy(batch["ligand_pos"])
                 atom_mask = model.residue_atom_mask[
                     batch["amino_acid"][residue_mask]

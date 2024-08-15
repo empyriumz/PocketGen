@@ -7,6 +7,7 @@ from .PD import (
     interpolation_init_new,
     sample_from_categorical,
 )
+from .protein_features import PositionalEncodings
 from .esmadapter import ProteinBertModelWithStructuralAdatper
 from .esm2adapter import ESM2WithStructuralAdatper
 from .encoders import get_encoder
@@ -31,6 +32,7 @@ class Pocket_Design(nn.Module):
         self.protein_atom_emb = nn.Embedding(
             protein_atom_feature_dim, self.hidden_channels // 2 - 8
         )
+        self.pos_embed = PositionalEncodings(16)
         self.ligand_atom_emb = nn.Linear(ligand_atom_feature_dim, self.hidden_channels)
         self.atom_pos_embedding = nn.Embedding(14, 8)
         self.residue_embedding = nn.Embedding(21, self.hidden_channels // 2 - 16)
@@ -70,7 +72,6 @@ class Pocket_Design(nn.Module):
             ).to(self.device)
 
     def _init_misc(self):
-        self.residue_mlp = nn.Linear(self.hidden_channels, 20)
         self.standard2alphabet = torch.tensor(
             [1, 6, 13, 9, 19, 12, 5, 2, 17, 8, 0, 11, 16, 14, 10, 4, 7, 18, 15, 3]
         ).to(self.device)
@@ -81,7 +82,7 @@ class Pocket_Design(nn.Module):
         self.res_atom_type = torch.tensor(RES_ATOM_TYPE).to(self.device)
 
     def init(self, batch):
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         label_ligand, pred_ligand = batch["ligand_pos"], batch["ligand_pos"]
         pred_ligand = (
             label_ligand + torch.randn_like(label_ligand).to(self.device) * 0.5
@@ -93,9 +94,9 @@ class Pocket_Design(nn.Module):
         ligand_feat = self.ligand_atom_emb(batch["ligand_feat"])
         res_H = self._compute_res_H(res_S, batch)
 
-        self.seq = batch["seq"]
+        self.full_seq = batch["full_seq"]
         self.full_seq_mask = batch["full_seq_mask"]
-        self.r10_mask = batch["r10_mask"]
+        self.large_pocket_mask = batch["large_pocket_mask"]
 
         return (
             res_H,
@@ -111,9 +112,8 @@ class Pocket_Design(nn.Module):
 
     def _initialize_res_X(self, batch, residue_mask):
         res_X = batch["residue_pos"]
-        res_X = (
-            interpolation_init_new(res_X, residue_mask, batch["backbone_pos"]),
-            batch["amino_acid_batch"],
+        res_X = interpolation_init_new(
+            res_X, residue_mask, batch["backbone_pos"], batch["amino_acid_batch"]
         )
         for k in range(len(batch["amino_acid"])):
             if residue_mask[k]:
@@ -132,7 +132,7 @@ class Pocket_Design(nn.Module):
             .repeat(res_S.shape[0], 1, 1)
         )
         res_emb = self.residue_embedding(res_S).unsqueeze(-2).repeat(1, 14, 1)
-        res_pos_emb = self.pe(batch["res_idx"]).unsqueeze(-2).repeat(1, 14, 1)
+        res_pos_emb = self.pos_embed(batch["res_idx"]).unsqueeze(-2).repeat(1, 14, 1)
         return torch.cat([atom_emb, atom_pos_emb, res_emb, res_pos_emb], dim=-1)
 
     def forward(self, batch):
@@ -147,28 +147,35 @@ class Pocket_Design(nn.Module):
             edit_residue_num,
             residue_mask,
         ) = self.init(batch)
+        res_H, res_X, ligand_pos, ligand_feat, pred_res_type = self.encoder(
+            res_H,
+            res_X,
+            res_S,
+            res_batch,
+            pred_ligand,
+            ligand_feat,
+            ligand_mask,
+            edit_residue_num,
+            residue_mask,
+        )
+        h_residue = res_H.sum(-2)
+        batch_size = res_batch.max().item() + 1
+        encoder_out = {
+            "feats": torch.zeros(
+                batch_size, self.full_seq.shape[1], self.hidden_channels
+            ).to(self.device)
+        }
+        encoder_out["feats"][self.large_pocket_mask] = h_residue.view(
+            -1, self.hidden_channels
+        )
+        init_pred = self.full_seq
+        decode_logits = self.esmadapter(init_pred, encoder_out)["logits"]
+        pred_res_type = decode_logits[self.full_seq_mask][:, 4:24]
 
-        for _ in range(self.config.train.num_iterations):
-            res_H, res_X, ligand_pos, ligand_feat, pred_res_type = self.encoder(
-                res_H,
-                res_X,
-                res_S,
-                res_batch,
-                self.seq,
-                pred_ligand,
-                ligand_feat,
-                ligand_mask,
-                edit_residue_num,
-                residue_mask,
-                self.esmadapter,
-                self.full_seq_mask,
-                self.r10_mask,
-            )
-
-        return res_H, res_X, ligand_pos, ligand_feat, pred_res_type, batch
+        return res_X, ligand_pos, pred_res_type
 
     def compute_loss(self, res_X, ligand_pos, pred_res_type, batch):
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         label_ligand = batch["ligand_pos"]
         atom_mask = self.residue_atom_mask[batch["amino_acid"][residue_mask]].bool()
         label_X = batch["residue_pos"]
@@ -221,7 +228,7 @@ class Pocket_Design(nn.Module):
         )
 
     def compute_metrics(self, pred_res_type, res_X, batch):
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         label_X = batch["residue_pos"]
 
         sampled_type, _ = sample_from_categorical(pred_res_type.detach())

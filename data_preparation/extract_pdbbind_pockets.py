@@ -8,7 +8,7 @@ from Bio import PDB
 import pandas as pd
 from functools import partial
 from tqdm.auto import tqdm
-from utils.protein_ligand_biopython import PDBProtein, parse_sdf_file
+from utils.protein_ligand import PDBProtein, parse_sdf_file
 
 
 def process_item(item, args):
@@ -22,40 +22,38 @@ def process_item(item, args):
         ligand = parse_sdf_file(ligand_path)
 
         large_pocket_idx, r10_residues = protein.query_residues_ligand(
-            ligand, args.large_radius, selected_residue=None, return_mask=False
+            ligand, args.large_radius, return_mask=False
         )
         assert len(large_pocket_idx) == len(r10_residues)
 
         small_pocket_idx, _ = protein.query_residues_ligand(
             ligand,
             radius=args.small_radius,
-            selected_residue=r10_residues,
             return_mask=False,
         )
-
         pocket_structure = protein.get_selected_structure(r10_residues)
-        pocket_file = f"{pdb_id}_pocket{args.large_radius}.pdb"
-        dest_folder = os.path.join(args.dest, "val", pdb_id)
+        large_pocket_file = f"{pdb_id}_pocket{args.large_radius}.pdb"
+        dest_folder = os.path.join(args.dest, "test", pdb_id)
         os.makedirs(dest_folder, exist_ok=True)
         ligand_dest = os.path.join(dest_folder, ligand_file)
-        pocket_dest = os.path.join(dest_folder, pocket_file)
+        large_pocket_dest = os.path.join(dest_folder, large_pocket_file)
 
         # Copy ligand file
         shutil.copyfile(ligand_path, ligand_dest)
-
+        # Copy protein file
+        shutil.copyfile(pdb_file, os.path.join(dest_folder, f"{pdb_id}_protein.pdb"))
         # Save pocket structure
         io = PDB.PDBIO()
         io.set_structure(pocket_structure)
-        io.save(pocket_dest)
+        io.save(large_pocket_dest)
 
         return True, (
-            pocket_file,
+            large_pocket_file,
             ligand_file,
             f"{pdb_id}_protein.pdb",
             seq,
             small_pocket_idx,
             large_pocket_idx,
-            category,
         )
     except Exception as e:
         print(f"Exception occurred for {pdb_id}: {str(e)}")
@@ -74,6 +72,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dest", type=str, required=True, help="Path to the output directory"
     )
+    parser.add_argument(
+        "--split",
+        type=str,
+        required=True,
+        choices=["train", "val", "test"],
+        help="Specify if train or val or test split",
+    ),
     parser.add_argument(
         "--dataframe",
         type=str,
@@ -108,7 +113,7 @@ if __name__ == "__main__":
     pool.join()
 
     # Write successful results
-    index_path = os.path.join(args.dest, "val", "index_seq.pkl")
+    index_path = os.path.join(args.dest, args.split, "index_seq.pkl")
     with open(index_path, "wb") as f:
         pickle.dump(index_pocket, f)
 

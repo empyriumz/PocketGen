@@ -1,6 +1,7 @@
 import os
 import pickle
 import lmdb
+import traceback
 import torch
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
@@ -9,17 +10,17 @@ from ..data import torchify_dict
 
 
 def from_protein_ligand_dicts(
-    protein_dict=None,
+    large_pocket_dict=None,
     ligand_dict=None,
     residue_dict=None,
-    seq=None,
+    full_seq=None,
     small_pocket_idx=None,
     large_pocket_idx=None,
 ):
     instance = {}
 
-    if protein_dict is not None:
-        for key, item in protein_dict.items():
+    if large_pocket_dict is not None:
+        for key, item in large_pocket_dict.items():
             instance["protein_" + key] = item
 
     if ligand_dict is not None:
@@ -30,8 +31,8 @@ def from_protein_ligand_dicts(
         for key, item in residue_dict.items():
             instance[key] = item
 
-    if seq is not None:
-        instance["seq"] = seq
+    if full_seq is not None:
+        instance["full_seq"] = full_seq
 
     if small_pocket_idx is not None:
         instance["small_pocket_idx"] = small_pocket_idx
@@ -44,17 +45,14 @@ def from_protein_ligand_dicts(
 
 class PocketLigandPairDataset(Dataset):
 
-    def __init__(self, raw_path, transform=None):
+    def __init__(self, raw_path, pocket_size=3.5, transform=None):
         super().__init__()
         self.raw_path = raw_path.rstrip("/")
+        self.pocket_size = pocket_size
         self.index_path = os.path.join(self.raw_path, "index_seq.pkl")
         self.processed_path = os.path.join(
             os.path.dirname(self.raw_path),
             os.path.basename(self.raw_path) + "_processed.lmdb",
-        )
-        self.name2id_path = os.path.join(
-            os.path.dirname(self.raw_path),
-            os.path.basename(self.raw_path) + "_name2id.pt",
         )
         self.transform = transform
         self.db = None
@@ -63,9 +61,6 @@ class PocketLigandPairDataset(Dataset):
 
         if not os.path.exists(self.processed_path):
             self._process()
-            # self._precompute_name2id()
-
-        # self.name2id = torch.load(self.name2id_path)
 
     def _connect_db(self):
         """
@@ -90,6 +85,82 @@ class PocketLigandPairDataset(Dataset):
         self.db = None
         self.keys = None
 
+    def _validate_data(
+        self,
+        large_pocket_dict,
+        residue_dict,
+        ligand_dict,
+        small_pocket_idx,
+        large_pocket_idx,
+        small_pocket_residue_mask,
+    ):
+        try:
+            # Check protein data
+            backbone_keys = ["pos_N", "pos_CA", "pos_C", "pos_O"]
+            backbone_sizes = [
+                residue_dict[key].shape[0]
+                for key in backbone_keys
+                if key in residue_dict
+            ]
+            assert (
+                len(backbone_sizes) == 4 and len(set(backbone_sizes)) == 1
+            ), "Inconsistent backbone sizes"
+
+            # Check small_pocket_idx is a subset of large_pocket_idx
+            assert set(small_pocket_idx).issubset(
+                set(large_pocket_idx)
+            ), "small_pocket_idx is not a subset of large_pocket_idx"
+
+            # Check atom counts
+            assert large_pocket_dict["element"].shape[0] == sum(
+                residue_dict["residue_natoms"]
+            ), "Mismatch in atom counts"
+
+            # Check ligand data
+            required_ligand_keys = [
+                "element",
+                "pos",
+                "bond_index",
+                "bond_type",
+                "center_of_mass",
+                "atom_feature",
+            ]
+            assert all(
+                key in ligand_dict for key in required_ligand_keys
+            ), "Missing required ligand keys"
+
+            num_ligand_atoms = ligand_dict["element"].shape[0]
+            assert (
+                ligand_dict["pos"].shape[0] == num_ligand_atoms
+            ), "Mismatch in ligand atom counts"
+            assert (
+                ligand_dict["atom_feature"].shape[0] == num_ligand_atoms
+            ), "Mismatch in ligand atom feature counts"
+
+            # Check bond data
+            assert (
+                ligand_dict["bond_index"].shape[1] == ligand_dict["bond_type"].shape[0]
+            ), "Mismatch in bond data"
+            assert (
+                ligand_dict["bond_index"].max() < num_ligand_atoms
+            ), "Invalid bond index"
+
+            # Check center_of_mass
+            assert ligand_dict["center_of_mass"].shape == (
+                3,
+            ), "Invalid center_of_mass shape"
+
+            assert small_pocket_residue_mask.sum() > 0, "No residues selected"
+            assert small_pocket_residue_mask.sum() == len(
+                small_pocket_idx
+            ), "Mismatch in selected residues"
+
+            return True
+
+        except AssertionError as e:
+            print(f"Validation failed: {str(e)}")
+            return False
+
     def _process(self):
         db = lmdb.open(
             self.processed_path,
@@ -107,66 +178,64 @@ class PocketLigandPairDataset(Dataset):
                 pocket_fn,
                 ligand_fn,
                 protein_fn,
-                seq,
+                full_seq,
                 small_pocket_idx,
                 large_pocket_idx,
             ) in enumerate(tqdm(index)):
                 if pocket_fn is None:
                     continue
-                # if len(seq)>500: continue
                 try:
-                    pdb_data = PDBProtein(os.path.join(self.raw_path, pocket_fn))
-                    pocket_dict = pdb_data.to_dict_atom()
-                    residue_dict = pdb_data.to_dict_residue()
-                    ligand_dict = parse_sdf_file(os.path.join(self.raw_path, ligand_fn))
-                    _, residue_dict["protein_edit_residue"] = (
-                        pdb_data.query_residues_ligand(ligand_dict)
+                    pdb_id = pocket_fn.split("_")[0]
+                    large_pocket = PDBProtein(
+                        os.path.join(self.raw_path, pdb_id, pocket_fn)
                     )
-                    assert residue_dict[
-                        "protein_edit_residue"
-                    ].sum() > 0 and residue_dict["protein_edit_residue"].sum() == len(
-                        small_pocket_idx
+                    large_pocket_dict = large_pocket.to_dict_atom()
+                    residue_dict = large_pocket.to_dict_residue()
+                    ligand_dict = parse_sdf_file(
+                        os.path.join(self.raw_path, pdb_id, ligand_fn)
                     )
-                    assert len(residue_dict["protein_edit_residue"]) == len(
-                        large_pocket_idx
+                    _, small_pocket_residue_mask = large_pocket.query_residues_ligand(
+                        ligand_dict, radius=self.pocket_size, return_mask=True
                     )
-                    small_pocket_idx.sort()
-                    large_pocket_idx.sort()
+                    # Validate data
+                    is_valid = self._validate_data(
+                        large_pocket_dict,
+                        residue_dict,
+                        ligand_dict,
+                        small_pocket_idx,
+                        large_pocket_idx,
+                        small_pocket_residue_mask,
+                    )
+
+                    if not is_valid:
+                        num_skipped += 1
+                        print(
+                            f"Skipping {pdb_id} due to validation failure {num_skipped} / {i}"
+                        )
+                        continue
+
+                    residue_dict["small_pocket_residue_mask"] = (
+                        small_pocket_residue_mask
+                    )
+
                     data = from_protein_ligand_dicts(
-                        protein_dict=torchify_dict(pocket_dict),
+                        large_pocket_dict=torchify_dict(large_pocket_dict),
                         ligand_dict=torchify_dict(ligand_dict),
                         residue_dict=torchify_dict(residue_dict),
-                        seq=seq,
+                        full_seq=full_seq,
                         small_pocket_idx=torch.tensor(small_pocket_idx),
                         large_pocket_idx=torch.tensor(large_pocket_idx),
                     )
-                    data["protein_filename"] = pocket_fn
                     data["ligand_filename"] = ligand_fn
-                    data["whole_protein_name"] = protein_fn
+                    data["protein_filename"] = protein_fn
                     txn.put(key=str(i).encode(), value=pickle.dumps(data))
-                except:
+
+                except Exception as e:
+                    print(f"Error processing {pdb_id}: {str(e)}")
+                    traceback.print_exc()
                     num_skipped += 1
-                    print(
-                        "Skipping (%d) %s"
-                        % (
-                            num_skipped,
-                            ligand_fn,
-                        )
-                    )
                     continue
         db.close()
-
-    def _precompute_name2id(self):
-        name2id = {}
-        for i in tqdm(range(self.__len__()), "Indexing"):
-            try:
-                data = self.__getitem__(i)
-            except AssertionError as e:
-                print(i, e)
-                continue
-            name = (data["protein_filename"], data["ligand_filename"])
-            name2id[name] = i
-        torch.save(name2id, self.name2id_path)
 
     def __len__(self):
         if self.db is None:

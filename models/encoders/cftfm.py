@@ -494,7 +494,7 @@ class HierEncoder(Module):
         S_id, R = batch["res_idx"], batch["amino_acid"]
         residue_batch, atom2residue = batch["amino_acid_batch"], batch["atom2residue"]
         edit_residue, edit_atom = (
-            batch["protein_edit_residue"],
+            batch["small_pocket_residue_mask"],
             batch["protein_edit_atom"],
         )
         if mask:
@@ -527,7 +527,7 @@ class HierEncoder(Module):
         E, residue_edge_index, residue_edge_length, edge_index_new, E_new = (
             self.features(
                 pos_ligand_coarse,
-                batch["protein_edit_residue"],
+                batch["small_pocket_residue_mask"],
                 batch["residue_pos"],
                 S_id,
                 residue_batch,

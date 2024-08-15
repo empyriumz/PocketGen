@@ -24,14 +24,22 @@ def parse_args():
 
 
 def setup_data(config, transform, batch_converter):
-    train_dataset = PocketLigandPairDataset(config["train_path"], transform=transform)
-    val_dataset = PocketLigandPairDataset(config["val_path"], transform=transform)
+    train_dataset = PocketLigandPairDataset(
+        config["data"]["train_path"], transform=transform
+    )
+    val_dataset = PocketLigandPairDataset(
+        config["data"]["val_path"], transform=transform
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.train.batch_size,
         shuffle=True,
         num_workers=config.train.num_workers,
-        collate_fn=partial(collate_mols_block, batch_converter=batch_converter),
+        collate_fn=partial(
+            collate_mols_block,
+            batch_converter=batch_converter,
+            mask_idx=batch_converter.alphabet.mask_idx,
+        ),
     )
     val_loader = DataLoader(
         val_dataset,
@@ -60,7 +68,7 @@ def train_step(model, batch, optimizer, config, device):
     batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
 
     # Forward pass
-    res_H, res_X, ligand_pos, ligand_feat, pred_res_type, batch = model(batch)
+    res_X, ligand_pos, pred_res_type = model(batch)
 
     # Compute loss
     huber_loss, pred_loss, struct_loss = model.compute_loss(

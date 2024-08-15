@@ -345,7 +345,7 @@ class Pocket_Design_new(Module):
 
     def forward_(self, batch):
         loss_list = [0.0, 0.0, 0.0]
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         full_seq = batch["seq"]
         ligand_mask = batch["ligand_mask"].bool()
         label_ligand, pred_ligand = copy.deepcopy(batch["ligand_pos"]), copy.deepcopy(
@@ -435,7 +435,7 @@ class Pocket_Design_new(Module):
                 residue_mask,
                 self.esmadapter,
                 batch["full_seq_mask"],
-                batch["r10_mask"],
+                batch["large_pocket_mask"],
             )
 
             atom_mask = self.residue_atom_mask[batch["amino_acid"][residue_mask]].bool()
@@ -476,7 +476,7 @@ class Pocket_Design_new(Module):
         return loss_list[1] + loss_list[0] + loss_list[2], loss_list, aar, rmsd
 
     def init(self, batch):
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         label_ligand, pred_ligand = copy.deepcopy(batch["ligand_pos"]), copy.deepcopy(
             batch["ligand_pos"]
         )
@@ -518,7 +518,7 @@ class Pocket_Design_new(Module):
         res_H = torch.cat([atom_emb, atom_pos_emb, res_emb, res_pos_emb], dim=-1)
         self.seq = batch["seq"]
         self.full_seq_mask = batch["full_seq_mask"]
-        self.r10_mask = batch["r10_mask"]
+        self.large_pocket_mask = batch["large_pocket_mask"]
         return (
             res_H,
             res_X,
@@ -569,7 +569,7 @@ class Pocket_Design_new(Module):
                     batch_size, self.seq.shape[1], self.hidden_channels
                 ).to(self.device)
             }
-            encoder_out["feats"][self.r10_mask] = h_residue.view(
+            encoder_out["feats"][self.large_pocket_mask] = h_residue.view(
                 -1, self.hidden_channels
             )
             init_pred = self.seq
@@ -580,7 +580,7 @@ class Pocket_Design_new(Module):
 
     def generate(self, batch, target_path="./generate"):
         print("Start Generating")
-        residue_mask = batch["protein_edit_residue"]
+        residue_mask = batch["small_pocket_residue_mask"]
         res_S = batch["amino_acid_processed"]
         full_seq = batch["seq"]
         label_S = copy.deepcopy(batch["amino_acid"])
@@ -646,7 +646,7 @@ class Pocket_Design_new(Module):
                         batch_size, full_seq.shape[1], self.hidden_channels
                     ).to(self.device)
                 }
-                encoder_out["feats"][batch["r10_mask"]] = h_residue.view(
+                encoder_out["feats"][batch["large_pocket_mask"]] = h_residue.view(
                     -1, self.hidden_channels
                 )
                 init_pred = full_seq
@@ -714,7 +714,7 @@ class Pocket_Design_new(Module):
                 batch["amino_acid_batch"],
                 self.generate_id1,
                 batch["protein_filename"],
-                batch["r10_mask"],
+                batch["large_pocket_mask"],
                 self.orig_data_path,
                 target_path,
             )
@@ -760,8 +760,10 @@ def random_mask(batch, device, mask=True):
         num_protein = batch["protein_atom_batch"].max() + 1
         for i in range(num_protein):
             mask = batch["amino_acid_batch"] == i
-            ind = torch.multinomial(batch["protein_edit_residue"][mask].float(), 1)
-            selected = torch.zeros_like(batch["protein_edit_residue"][mask], dtype=bool)
+            ind = torch.multinomial(batch["small_pocket_residue_mask"][mask].float(), 1)
+            selected = torch.zeros_like(
+                batch["small_pocket_residue_mask"][mask], dtype=bool
+            )
             selected[ind] = 1
             tmp.append(selected)
         batch["random_mask_residue"] = torch.cat(tmp, dim=0)
@@ -788,7 +790,7 @@ def random_mask(batch, device, mask=True):
             batch["residue_natoms"],
         )
         batch["protein_edit_atom"] = torch.repeat_interleave(
-            batch["protein_edit_residue"], batch["residue_natoms"], dim=0
+            batch["small_pocket_residue_mask"], batch["residue_natoms"], dim=0
         )
         batch["random_mask_atom"] = torch.repeat_interleave(
             batch["random_mask_residue"], batch["residue_natoms"], dim=0
@@ -826,7 +828,7 @@ def random_mask(batch, device, mask=True):
             batch["residue_natoms"],
         )
         batch["protein_edit_atom"] = torch.repeat_interleave(
-            batch["protein_edit_residue"], batch["residue_natoms"], dim=0
+            batch["small_pocket_residue_mask"], batch["residue_natoms"], dim=0
         )
 
     # follow batch
@@ -841,7 +843,7 @@ def random_mask(batch, device, mask=True):
         torch.arange(num_protein), repeats
     ).to(device)
     batch["edit_backbone"] = copy.deepcopy(batch["protein_edit_atom"])
-    index = torch.arange(len(batch["amino_acid"]))[batch["protein_edit_residue"]]
+    index = torch.arange(len(batch["amino_acid"]))[batch["small_pocket_residue_mask"]]
     for k in range(len(batch["amino_acid"])):
         mask = batch["atom2residue"] == k
         if k in index:
@@ -1264,8 +1266,8 @@ class ProteinFeature(nn.Module):
         x0, x1, x2, x3 = X[(n, a0)], X[(n, a1)], X[(n, a2)], X[(n, a3)]  # [Nchis, 3]
         u_0, u_1, u_2 = (x1 - x0), (x2 - x1), (x3 - x2)  # [Nchis, 3]
         # normals of the two planes
-        n_1 = F.normalize(torch.cross(u_0, u_1), dim=-1)  # [Nchis, 3]
-        n_2 = F.normalize(torch.cross(u_1, u_2), dim=-1)  # [Nchis, 3]
+        n_1 = F.normalize(torch.linalg.cross(u_0, u_1), dim=-1)  # [Nchis, 3]
+        n_2 = F.normalize(torch.linalg.cross(u_1, u_2), dim=-1)  # [Nchis, 3]
         cosChi = (n_1 * n_2).sum(-1)  # [Nchis]
         eps = 1e-7
         cosChi = torch.clamp(cosChi, -1 + eps, 1 - eps)
@@ -1290,8 +1292,8 @@ class ProteinFeature(nn.Module):
         # 1. dihedral angles
         u_2, u_1, u_0 = U[:-2], U[1:-1], U[2:]  # [N * 3 - 3, 3]
         # backbone normals
-        n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
-        n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
+        n_2 = F.normalize(torch.linalg.cross(u_2, u_1), dim=-1)
+        n_1 = F.normalize(torch.linalg.cross(u_1, u_0), dim=-1)
         # angle between normals
         eps = 1e-7
         cosD = (n_2 * n_1).sum(-1)  # [(N-1) * 3]

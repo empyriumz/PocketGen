@@ -9,7 +9,7 @@ AA_INDEX_TO_SYM[0] = "X"  # Add a placeholder for index 0, if needed
 
 
 def from_protein_ligand_dicts(
-    protein_dict=None,
+    large_pocket_dict=None,
     ligand_dict=None,
     residue_dict=None,
     seq=None,
@@ -18,8 +18,8 @@ def from_protein_ligand_dicts(
 ):
     instance = {}
 
-    if protein_dict is not None:
-        for key, item in protein_dict.items():
+    if large_pocket_dict is not None:
+        for key, item in large_pocket_dict.items():
             instance["protein_" + key] = item
 
     if ligand_dict is not None:
@@ -155,7 +155,7 @@ class PocketLigandPairDataset(Dataset):
             else:
                 residue_dict[key] = torch.tensor([])
 
-        residue_dict["protein_edit_residue"] = torch.ones_like(
+        residue_dict["small_pocket_residue_mask"] = torch.ones_like(
             residue_dict["amino_acid"], dtype=torch.bool
         )
 

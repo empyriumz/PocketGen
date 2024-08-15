@@ -25,6 +25,7 @@ train:
   max_iters: 300_000
   warm_up: 5000
   val_freq: 10000
+  log_freq: 100
   max_grad_norm: 400
   optimizer:
     type: adam
@@ -38,6 +39,6 @@ train:
     patience: 5
     min_lr: 1.e-5
 
-dataset:
+data:
   train_path: /host/scratch/pocketgen/PDBBind_v2020/processed/train
   val_path: /host/scratch/pocketgen/PDBBind_v2020/processed/val

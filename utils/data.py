@@ -1,12 +1,9 @@
-import copy
 import torch
 import numpy as np
 from torch_geometric.data import Batch
-from torch_scatter import scatter_sum
 from typing import Sequence, Tuple, List
 import itertools
 
-FOLLOW_BATCH = ["protein_element", "ligand_context_element", "pos_real", "pos_fake"]
 # fmt: off
 proteinseq_toks = {
     'toks': ['L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-']
@@ -219,18 +216,17 @@ class ProteinLigandData(object):
         super().__init__(*args, **kwargs)
 
     @staticmethod
-    def from_protein_ligand_dicts(protein_dict=None, ligand_dict=None, **kwargs):
+    def from_protein_ligand_dicts(large_pocket_dict=None, ligand_dict=None, **kwargs):
         instance = ProteinLigandData(**kwargs)
 
-        if protein_dict is not None:
-            for key, item in protein_dict.items():
+        if large_pocket_dict is not None:
+            for key, item in large_pocket_dict.items():
                 instance["protein_" + key] = item
 
         if ligand_dict is not None:
             for key, item in ligand_dict.items():
                 instance["ligand_" + key] = item
 
-        # instance['ligand_nbh_list'] = {i.item():[j.item() for k, j in enumerate(instance.ligand_bond_index[1]) if instance.ligand_bond_index[0, k].item() == i] for i in instance.ligand_bond_index[0]}
         return instance
 
 
@@ -250,7 +246,7 @@ def torchify_dict(data):
     return output
 
 
-def collate_mols_block(mol_dicts, batch_converter):
+def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     data_batch = {}
     batch_size = len(mol_dicts)
 
@@ -258,8 +254,7 @@ def collate_mols_block(mol_dicts, batch_converter):
     common_keys = [
         "protein_pos",
         "protein_atom_feature",
-        # "protein_atom_name",
-        "protein_edit_residue",
+        "small_pocket_residue_mask",
         "amino_acid",
         "residue_natoms",
         "protein_atom_to_aa_type",
@@ -300,7 +295,7 @@ def collate_mols_block(mol_dicts, batch_converter):
     # Process protein residue information
     num_residues = len(data_batch["amino_acid"])
     data_batch["amino_acid_processed"] = data_batch["amino_acid"].clone()
-    data_batch["amino_acid_processed"][data_batch["protein_edit_residue"]] = 0
+    data_batch["amino_acid_processed"][data_batch["small_pocket_residue_mask"]] = 0
     data_batch["atom2residue"] = torch.repeat_interleave(
         torch.arange(num_residues), data_batch["residue_natoms"]
     )
@@ -350,37 +345,25 @@ def collate_mols_block(mol_dicts, batch_converter):
 
     # Process edit residue information
     data_batch["edit_residue_num"] = torch.tensor(
-        [mol_dict["protein_edit_residue"].sum() for mol_dict in mol_dicts],
+        [mol_dict["small_pocket_residue_mask"].sum() for mol_dict in mol_dicts],
         device=data_batch["amino_acid"].device,
     )
 
     # Process sequence information
-    data_batch["seq"] = [("", mol_dict["seq"]) for mol_dict in mol_dicts]
-    _, _, data_batch["seq"] = batch_converter(data_batch["seq"])
+    data_batch["full_seq"] = [("", mol_dict["full_seq"]) for mol_dict in mol_dicts]
+    _, _, data_batch["full_seq"] = batch_converter(data_batch["full_seq"])
 
-    # Process small_pocket_idx and large_pocket_idx
-    data_batch["small_pocket_idx"] = [
-        torch.where(mol_dict["protein_edit_residue"])[0] for mol_dict in mol_dicts
-    ]
-    data_batch["large_pocket_idx"] = [
-        torch.arange(len(mol_dict["amino_acid"])) for mol_dict in mol_dicts
-    ]
-
-    mask_id = 32
-    data_batch["full_seq_mask"] = torch.zeros_like(data_batch["seq"]).bool()
-    data_batch["r10_mask"] = torch.zeros_like(data_batch["seq"]).bool()
+    data_batch["full_seq_mask"] = torch.zeros_like(data_batch["full_seq"]).bool()
+    data_batch["large_pocket_mask"] = torch.zeros_like(data_batch["full_seq"]).bool()
 
     for b in range(batch_size):
-        data_batch["seq"][b][mol_dicts[b]["small_pocket_idx"] + 1] = mask_id
+        data_batch["full_seq"][b][mol_dicts[b]["small_pocket_idx"] + 1] = mask_idx
         data_batch["full_seq_mask"][b][mol_dicts[b]["small_pocket_idx"] + 1] = True
-        data_batch["r10_mask"][b][mol_dicts[b]["large_pocket_idx"] + 1] = True
+        data_batch["large_pocket_mask"][b][mol_dicts[b]["large_pocket_idx"] + 1] = True
 
     # Add filename information
     data_batch["protein_filename"] = [
-        mol_dict["whole_protein_name"] for mol_dict in mol_dicts
-    ]
-    data_batch["pocket_filename"] = [
-        mol_dict["protein_filename"] for mol_dict in mol_dicts
+        mol_dict["protein_name"] for mol_dict in mol_dicts
     ]
     data_batch["ligand_filename"] = [
         mol_dict["ligand_filename"] for mol_dict in mol_dicts

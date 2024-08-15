@@ -110,16 +110,16 @@ def name2data(name, args):
     pocket_dict = pocket.to_dict_atom()
     residue_dict = pocket.to_dict_residue()
 
-    _, residue_dict["protein_edit_residue"] = pocket.query_residues_ligand(ligand)
-    assert residue_dict["protein_edit_residue"].sum() > 0 and residue_dict[
-        "protein_edit_residue"
+    _, residue_dict["small_pocket_residue_mask"] = pocket.query_residues_ligand(ligand)
+    assert residue_dict["small_pocket_residue_mask"].sum() > 0 and residue_dict[
+        "small_pocket_residue_mask"
     ].sum() == len(small_pocket_idx)
-    assert len(residue_dict["protein_edit_residue"]) == len(large_pocket_idx)
+    assert len(residue_dict["small_pocket_residue_mask"]) == len(large_pocket_idx)
     small_pocket_idx.sort()
     large_pocket_idx.sort()
 
     data = from_protein_ligand_dicts(
-        protein_dict=torchify_dict(pocket_dict),
+        large_pocket_dict=torchify_dict(pocket_dict),
         ligand_dict=torchify_dict(ligand),
         residue_dict=torchify_dict(residue_dict),
         seq=seq,

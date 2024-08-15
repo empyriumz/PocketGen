@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 from torch_scatter import scatter_add
 from rdkit import Chem
 from .data import ProteinLigandData
-from .protein_ligand import ATOM_FAMILIES, ATOM_TYPES
+from .constants import ATOM_FAMILIES, ATOM_TYPES
 
 # allowable node and edge features
 allowable_features = {

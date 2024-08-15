@@ -5,6 +5,13 @@ import numpy as np
 from torch_geometric.nn import knn_graph
 
 
+def gather_edges(edges, neighbor_idx):
+    # Features [B,N,N,C] at Neighbor indices [B,N,K] => Neighbor features [B,N,K,C]
+    neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, edges.size(-1))
+    edge_features = torch.gather(edges, 2, neighbors)
+    return edge_features
+
+
 class PositionalEncodings(nn.Module):
     def __init__(self, num_embeddings):
         super(PositionalEncodings, self).__init__()
