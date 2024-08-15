@@ -5,8 +5,8 @@ import traceback
 import torch
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
-from ..protein_ligand import PDBProtein, parse_sdf_file
-from ..data import torchify_dict
+from .protein_ligand import PDBProtein, parse_sdf_file
+from .data import torchify_dict
 
 
 def from_protein_ligand_dicts(

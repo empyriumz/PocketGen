@@ -6,19 +6,6 @@ import torch
 import numpy as np
 import yaml
 from easydict import EasyDict
-from logging import Logger
-from tqdm.auto import tqdm
-
-
-class BlackHole(object):
-    def __setattr__(self, name, value):
-        pass
-
-    def __call__(self, *args, **kwargs):
-        return self
-
-    def __getattr__(self, name):
-        return self
 
 
 def load_config(path):
@@ -70,11 +57,3 @@ def log_hyperparams(writer, args):
     writer.file_writer.add_summary(exp)
     writer.file_writer.add_summary(ssi)
     writer.file_writer.add_summary(sei)
-
-
-def int_tuple(argstr):
-    return tuple(map(int, argstr.split(",")))
-
-
-def str_tuple(argstr):
-    return tuple(argstr.split(","))

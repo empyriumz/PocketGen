@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
 from models.Pocket_Design import Pocket_Design
-from utils.datasets.pl_original import PocketLigandPairDataset
+from utils.dataset import PocketLigandPairDataset
 from utils.misc import load_config, seed_all
 from utils.train import inf_iterator, get_optimizer, get_scheduler
 from utils.data import Alphabet, BatchConverter, collate_mols_block

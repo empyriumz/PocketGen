@@ -363,7 +363,7 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
 
     # Add filename information
     data_batch["protein_filename"] = [
-        mol_dict["protein_name"] for mol_dict in mol_dicts
+        mol_dict["protein_filename"] for mol_dict in mol_dicts
     ]
     data_batch["ligand_filename"] = [
         mol_dict["ligand_filename"] for mol_dict in mol_dicts
