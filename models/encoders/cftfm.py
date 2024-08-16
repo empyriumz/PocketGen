@@ -624,10 +624,10 @@ class HierEncoder(Module):
             X = X_avg.unsqueeze(1).repeat(1, 14, 1)
             N = atom2residue.max() + 1
             mask = torch.zeros(N, 14, dtype=bool).to(protein_pos.device)
-            residue_natoms = atom2residue.bincount()
+            residue_num_atoms = atom2residue.bincount()
             for j in range(N):
-                mask[j][: residue_natoms[j]] = 1  # all atoms mask [N,14]
-                X[j][: residue_natoms[j]] = protein_pos[atom2residue == j]
+                mask[j][: residue_num_atoms[j]] = 1  # all atoms mask [N,14]
+                X[j][: residue_num_atoms[j]] = protein_pos[atom2residue == j]
 
             xij = X[residue_edge_index[0]] - X_avg[residue_edge_index[1]].unsqueeze(
                 1

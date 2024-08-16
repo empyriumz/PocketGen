@@ -784,16 +784,16 @@ def random_mask(batch, device, mask=True):
                 else:
                     tmp.append(batch[key][mask])
             batch[key] = torch.cat(tmp, dim=0)
-        batch["residue_natoms"][batch["random_mask_residue"]] = 4
+        batch["residue_num_atoms"][batch["random_mask_residue"]] = 4
         batch["atom2residue"] = torch.repeat_interleave(
-            torch.arange(len(batch["residue_natoms"]), device=device),
-            batch["residue_natoms"],
+            torch.arange(len(batch["residue_num_atoms"]), device=device),
+            batch["residue_num_atoms"],
         )
         batch["protein_edit_atom"] = torch.repeat_interleave(
-            batch["small_pocket_residue_mask"], batch["residue_natoms"], dim=0
+            batch["small_pocket_residue_mask"], batch["residue_num_atoms"], dim=0
         )
         batch["random_mask_atom"] = torch.repeat_interleave(
-            batch["random_mask_residue"], batch["residue_natoms"], dim=0
+            batch["random_mask_residue"], batch["residue_num_atoms"], dim=0
         )
     else:
         # reset protein pos and feature
@@ -822,20 +822,20 @@ def random_mask(batch, device, mask=True):
         ), torch.cat(feature_tmp, dim=0)
         batch["protein_atom_feature"][:, -21] = 0
 
-        batch["residue_natoms"] = torch.tensor(natoms_tmp, device=device)
+        batch["residue_num_atoms"] = torch.tensor(natoms_tmp, device=device)
         batch["atom2residue"] = torch.repeat_interleave(
-            torch.arange(len(batch["residue_natoms"]), device=device),
-            batch["residue_natoms"],
+            torch.arange(len(batch["residue_num_atoms"]), device=device),
+            batch["residue_num_atoms"],
         )
         batch["protein_edit_atom"] = torch.repeat_interleave(
-            batch["small_pocket_residue_mask"], batch["residue_natoms"], dim=0
+            batch["small_pocket_residue_mask"], batch["residue_num_atoms"], dim=0
         )
 
     # follow batch
     num_protein = batch["protein_atom_batch"].max() + 1
     repeats = torch.tensor(
         [
-            batch["residue_natoms"][batch["amino_acid_batch"] == i].sum()
+            batch["residue_num_atoms"][batch["amino_acid_batch"] == i].sum()
             for i in range(num_protein)
         ]
     )

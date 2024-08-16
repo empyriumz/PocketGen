@@ -246,7 +246,7 @@ def torchify_dict(data):
     return output
 
 
-def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
+def collate_mols_block(mol_dicts, batch_converter, cls_idx=0, mask_idx=32):
     data_batch = {}
     batch_size = len(mol_dicts)
 
@@ -256,7 +256,7 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
         "protein_atom_feature",
         "small_pocket_residue_mask",
         "amino_acid",
-        "residue_natoms",
+        "residue_num_atoms",
         "protein_atom_to_aa_type",
         "res_idx",
         "ligand_element",
@@ -295,9 +295,15 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     # Process protein residue information
     num_residues = len(data_batch["amino_acid"])
     data_batch["amino_acid_processed"] = data_batch["amino_acid"].clone()
-    data_batch["amino_acid_processed"][data_batch["small_pocket_residue_mask"]] = 0
+    offset = 0  # the offset is necessary to keep track of the residue index as we have concatenated the amino acids
+    for mol_dict in mol_dicts:
+        mask_length = len(mol_dict["small_pocket_residue_mask"])
+        data_batch["amino_acid_processed"][offset : offset + mask_length][
+            mol_dict["small_pocket_residue_mask"]
+        ] = cls_idx
+        offset += mask_length
     data_batch["atom2residue"] = torch.repeat_interleave(
-        torch.arange(num_residues), data_batch["residue_natoms"]
+        torch.arange(num_residues), data_batch["residue_num_atoms"]
     )
     data_batch["residue_pos"] = torch.zeros(
         num_residues, 14, 3, device=data_batch["amino_acid"].device
@@ -306,9 +312,9 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     for k in range(num_residues):
         mask = data_batch["atom2residue"] == k
         data_batch["residue_pos"][k][
-            : min(data_batch["residue_natoms"][k].item(), 14)
+            : min(data_batch["residue_num_atoms"][k].item(), 14)
         ] = data_batch["protein_pos"][mask][
-            : min(data_batch["residue_natoms"][k].item(), 14)
+            : min(data_batch["residue_num_atoms"][k].item(), 14)
         ]
 
     # Process batch information for residues
@@ -318,10 +324,10 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     )
 
     # Process ligand information
-    data_batch["ligand_natoms"] = torch.tensor(
+    data_batch["ligand_num_atoms"] = torch.tensor(
         [len(mol_dict["ligand_pos"]) for mol_dict in mol_dicts]
     )
-    max_ligand_atoms = max(data_batch["ligand_natoms"])
+    max_ligand_atoms = max(data_batch["ligand_num_atoms"])
 
     ligand_tensors = ["ligand_pos", "ligand_feat"]
     for key in ligand_tensors:
@@ -338,7 +344,7 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     )
 
     for b in range(batch_size):
-        n_atoms = data_batch["ligand_natoms"][b]
+        n_atoms = data_batch["ligand_num_atoms"][b]
         data_batch["ligand_pos"][b, :n_atoms] = mol_dicts[b]["ligand_pos"]
         data_batch["ligand_feat"][b, :n_atoms] = mol_dicts[b]["ligand_atom_feature"]
         data_batch["ligand_mask"][b, :n_atoms] = 1
@@ -357,10 +363,16 @@ def collate_mols_block(mol_dicts, batch_converter, mask_idx=32):
     data_batch["large_pocket_mask"] = torch.zeros_like(data_batch["full_seq"]).bool()
 
     for b in range(batch_size):
-        data_batch["full_seq"][b][mol_dicts[b]["small_pocket_idx"] + 1] = mask_idx
-        data_batch["full_seq_mask"][b][mol_dicts[b]["small_pocket_idx"] + 1] = True
+        data_batch["full_seq"][b][
+            mol_dicts[b]["small_pocket_global_idx"] + 1
+        ] = mask_idx
+        data_batch["full_seq_mask"][b][
+            mol_dicts[b]["small_pocket_global_idx"] + 1
+        ] = True
         data_batch["large_pocket_mask"][b][mol_dicts[b]["large_pocket_idx"] + 1] = True
 
+    data_batch["full_seq_with_masked_tokens"] = data_batch["full_seq"].clone()
+    data_batch.pop("full_seq")
     # Add filename information
     data_batch["protein_filename"] = [
         mol_dict["protein_filename"] for mol_dict in mol_dicts

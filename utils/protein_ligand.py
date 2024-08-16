@@ -124,7 +124,7 @@ class PDBProtein:
         self.pos_C = []
         self.pos_N = []
         self.pos_O = []
-        self.residue_natoms = []
+        self.residue_num_atoms = []
         self.ptable = Chem.GetPeriodicTable()
 
         self._parse()
@@ -170,7 +170,7 @@ class PDBProtein:
                             PDB.Polypeptide.three_to_index(residue.get_resname())
                         )
                         self.amino_idx.append(residue.get_id()[1])
-                        self.residue_natoms.append(len(res_dict["atoms"]))
+                        self.residue_num_atoms.append(len(res_dict["atoms"]))
 
                         # Get backbone atom positions
                         self.pos_CA.append(
@@ -227,7 +227,7 @@ class PDBProtein:
             "pos_O": np.array(
                 [p for p in self.pos_O if p is not None], dtype=np.float32
             ),
-            "residue_natoms": np.array(self.residue_natoms, dtype=np.int64),
+            "residue_num_atoms": np.array(self.residue_num_atoms, dtype=np.int64),
         }
 
     def query_residues_radius(self, center, radius, criterion="center_of_mass"):
@@ -265,18 +265,3 @@ class PDBProtein:
         if return_mask:
             return list(sel_idx), selected_mask
         return list(sel_idx), selected
-
-    def get_selected_structure(self, selected_residues):
-        new_structure = PDB.Structure.Structure("pocket")
-        new_model = PDB.Model.Model(0)
-        new_structure.add(new_model)
-
-        for chain in self.structure[0]:
-            new_chain = PDB.Chain.Chain(chain.id)
-            for residue in chain:
-                if any(residue.id[1] == r["id"] for r in selected_residues):
-                    new_chain.add(residue.copy())
-            if len(new_chain):
-                new_model.add(new_chain)
-
-        return new_structure

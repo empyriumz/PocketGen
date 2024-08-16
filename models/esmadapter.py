@@ -111,7 +111,7 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
 
     def _init_layer(self, layer_idx):
         if layer_idx in self.args.adapter_layer_indices:
-            layer = TransforerLayerWithStructralAdapter(
+            layer = TransformerLayerWithStructralAdapter(
                 self.args.embed_dim,
                 self.args.ffn_embed_dim,
                 self.args.attention_heads,
@@ -298,7 +298,7 @@ class ProteinBertModelWithStructuralAdatper(nn.Module):
         return self.args.layers
 
 
-class TransforerLayerWithStructralAdapter(nn.Module):
+class TransformerLayerWithStructralAdapter(nn.Module):
     def __init__(
         self,
         embed_dim,

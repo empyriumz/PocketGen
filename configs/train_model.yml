@@ -20,8 +20,8 @@ model:
 train:
   multi_gpu: False
   seed: 2024
-  batch_size: 2
-  num_workers: 4
+  batch_size: 4
+  num_workers: 8
   max_iters: 300_000
   warm_up: 5000
   val_freq: 10000
@@ -40,5 +40,5 @@ train:
     min_lr: 1.e-5
 
 data:
-  train_path: /host/scratch/pocketgen/PDBBind_v2020/processed/train
-  val_path: /host/scratch/pocketgen/PDBBind_v2020/processed/val
+  train_path: /host/scratch/pocketgen/PDBBind_v2020/processed_train.lmdb
+  val_path: /host/scratch/pocketgen/PDBBind_v2020/processed_val.lmdb

@@ -128,7 +128,7 @@ class ESM2WithStructuralAdatper(nn.Module):
 
     def _init_layer(self, layer_idx):
         if layer_idx in self.args.adapter_layer_indices:
-            layer = TransforerLayerWithStructralAdapter(
+            layer = TransformerLayerWithStructralAdapter(
                 self.embed_dim,
                 4 * self.embed_dim,
                 self.attention_heads,
@@ -275,7 +275,7 @@ class ESM2WithStructuralAdatper(nn.Module):
         return self(tokens, return_contacts=True)["contacts"]
 
 
-class TransforerLayerWithStructralAdapter(nn.Module):
+class TransformerLayerWithStructralAdapter(nn.Module):
     def __init__(
         self,
         embed_dim,

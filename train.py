@@ -39,6 +39,7 @@ def setup_data(config, transform, batch_converter):
             collate_mols_block,
             batch_converter=batch_converter,
             mask_idx=batch_converter.alphabet.mask_idx,
+            cls_idx=batch_converter.alphabet.cls_idx,
         ),
     )
     val_loader = DataLoader(
@@ -100,11 +101,7 @@ def validate(model, val_loader, device):
             batch = {
                 k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()
             }
-
-            # Forward pass
-            res_H, res_X, ligand_pos, ligand_feat, pred_res_type, batch = model(batch)
-
-            # Compute loss
+            res_X, ligand_pos, pred_res_type = model(batch)
             huber_loss, pred_loss, struct_loss = model.compute_loss(
                 res_X, ligand_pos, pred_res_type, batch
             )

@@ -94,7 +94,7 @@ class Pocket_Design(nn.Module):
         ligand_feat = self.ligand_atom_emb(batch["ligand_feat"])
         res_H = self._compute_res_H(res_S, batch)
 
-        self.full_seq = batch["full_seq"]
+        self.full_seq_with_masked_tokens = batch["full_seq_with_masked_tokens"]
         self.full_seq_mask = batch["full_seq_mask"]
         self.large_pocket_mask = batch["large_pocket_mask"]
 
@@ -147,6 +147,7 @@ class Pocket_Design(nn.Module):
             edit_residue_num,
             residue_mask,
         ) = self.init(batch)
+
         res_H, res_X, ligand_pos, ligand_feat, pred_res_type = self.encoder(
             res_H,
             res_X,
@@ -162,13 +163,15 @@ class Pocket_Design(nn.Module):
         batch_size = res_batch.max().item() + 1
         encoder_out = {
             "feats": torch.zeros(
-                batch_size, self.full_seq.shape[1], self.hidden_channels
+                batch_size,
+                self.full_seq_with_masked_tokens.shape[1],
+                self.hidden_channels,
             ).to(self.device)
         }
         encoder_out["feats"][self.large_pocket_mask] = h_residue.view(
             -1, self.hidden_channels
         )
-        init_pred = self.full_seq
+        init_pred = self.full_seq_with_masked_tokens
         decode_logits = self.esmadapter(init_pred, encoder_out)["logits"]
         pred_res_type = decode_logits[self.full_seq_mask][:, 4:24]
 
